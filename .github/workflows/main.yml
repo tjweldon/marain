@@ -1,0 +1,14 @@
+on:
+    push:
+      branches:
+        - main
+jobs:
+  webhook:
+    name: "☎️ call webhook"
+    runs-on: ubuntu-latest
+    steps:
+    - name: Invoke deployment hook
+      uses: distributhor/workflow-webhook@v3
+      with:
+        webhook_url: ${{ secrets.WEBHOOK_URL }}
+        webhook_secret: ${{ secrets.WEBHOOK_SECRET }}
