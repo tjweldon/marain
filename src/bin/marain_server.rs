@@ -3,7 +3,7 @@ extern crate marain_server;
 use env_logger;
 use futures_channel::mpsc::{unbounded, UnboundedReceiver};
 use futures_util::StreamExt;
-use log::info;
+use log::{info, warn};
 use marain_server::{
     domain::{room::Room, types::LockedRoomMap, user::User, util::hash},
     handlers::{
@@ -33,6 +33,7 @@ async fn main() -> Result<(), Error> {
     let mut port = getenv("MARAIN_PORT");
     if port.len() == 0 {
         port = "8080".to_string();
+        warn!("Could not find MARAIN_PORT environment variable. Falling back to 8080.");
     }
 
     let addr = format!("0.0.0.0:{}", port);
