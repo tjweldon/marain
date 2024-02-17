@@ -1,10 +1,10 @@
-extern crate marain_chat_server;
+extern crate marain_server;
 
 use env_logger;
 use futures_channel::mpsc::{unbounded, UnboundedReceiver};
 use futures_util::StreamExt;
 use log::info;
-use marain_chat_server::{
+use marain_server::{
     domain::{room::Room, types::LockedRoomMap, user::User, util::hash},
     handlers::{
         commands::command_handler, messages::global_message_handler,
