@@ -13,7 +13,6 @@ use marain_chat_server::{
 };
 use std::{
     collections::{HashMap, VecDeque},
-    env,
     io::Error,
     sync::{Arc, Mutex},
 };
@@ -21,12 +20,22 @@ use tokio::net::TcpListener;
 use tokio_tungstenite::tungstenite::{Message, Result};
 use uuid::Uuid;
 
+fn getenv(name: &str) -> String {
+    match std::env::var(name) {
+        Ok(var) => var,
+        _ => "".to_string(),
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     let _ = env_logger::try_init();
-    let addr = env::args()
-        .nth(1)
-        .unwrap_or_else(|| "127.0.0.1:8080".to_string());
+    let mut port = getenv("MARAIN_PORT");
+    if port.len() == 0 {
+        port = "8080".to_string();
+    }
+
+    let addr = format!("0.0.0.0:{}", port);
 
     let rooms = LockedRoomMap::new(Mutex::new(HashMap::new()));
     let global_room_hash = hash(String::from("hub"));
