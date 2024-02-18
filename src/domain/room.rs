@@ -10,7 +10,6 @@ use super::types::LockedPeerMap;
 pub struct Room {
     pub occupants: LockedPeerMap,
     pub message_bus: Arc<Mutex<VecDeque<Message>>>,
-    pub bus_max: usize,
 }
 
 impl Room {
@@ -18,7 +17,6 @@ impl Room {
         Room {
             occupants,
             message_bus,
-            bus_max: 25,
         }
     }
 
