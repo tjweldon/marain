@@ -6,7 +6,10 @@ use futures_util::StreamExt;
 use log::{error, info};
 use tokio_tungstenite::tungstenite::Message;
 
-use crate::domain::{types::{LockedRoomMap, PeerMap}, user::User};
+use crate::domain::{
+    types::{LockedRoomMap, PeerMap},
+    user::User,
+};
 
 pub async fn command_handler(
     mut cmd_source: UnboundedReceiver<Message>,
@@ -34,10 +37,7 @@ pub async fn command_handler(
 }
 
 fn prepare_route_command(
-    locked_occupants: Result<
-        MutexGuard<PeerMap>,
-        PoisonError<MutexGuard<PeerMap>>,
-    >,
+    locked_occupants: Result<MutexGuard<PeerMap>, PoisonError<MutexGuard<PeerMap>>>,
     user: &Arc<Mutex<User>>,
     cmd: Message,
     room_sink: &UnboundedSender<Message>,

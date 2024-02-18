@@ -38,7 +38,9 @@ pub async fn room_handler(
             );
             match created {
                 None => move_rooms(&rooms, &user, room_hash),
-                Some(_) => error!("Rooms did not contain key but room was found on insert attempt."),
+                Some(_) => {
+                    error!("Rooms did not contain key but room was found on insert attempt.")
+                }
             }
         }
     }
