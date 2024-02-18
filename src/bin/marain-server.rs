@@ -4,6 +4,7 @@ use env_logger;
 use futures_channel::mpsc::{unbounded, UnboundedReceiver};
 use futures_util::StreamExt;
 use log::{info, warn};
+use marain_api::prelude::{ClientMsg, ClientMsgBody};
 use marain_server::{
     domain::{room::Room, types::LockedRoomMap, user::User, util::hash},
     handlers::{
@@ -13,7 +14,6 @@ use marain_server::{
 };
 use std::{
     collections::{HashMap, VecDeque},
-    io::Error,
     sync::{Arc, Mutex},
 };
 use tokio::net::TcpListener;
@@ -28,7 +28,7 @@ fn getenv(name: &str) -> String {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Error> {
+async fn main() -> Result<()> {
     let _ = env_logger::try_init();
     let mut port = getenv("MARAIN_PORT");
     if port.len() == 0 {
@@ -61,18 +61,33 @@ async fn main() -> Result<(), Error> {
         info!("Websocket connection from: {}", user_addr,);
         let (ws_sink, mut ws_source) = ws_stream.split();
 
-        // create & register user in landing room
-        let user_name = ws_source.next().await.unwrap().unwrap();
         let user_id = format!("{:X}", Uuid::new_v4().as_u128());
+        let mut user_name: String = "".into();
+        // create & register user in landing room
+        if let Some(Ok(login_msg)) = ws_source.next().await {
+            if login_msg.is_text() {
+                if let Ok(ClientMsg {
+                    token: None,
+                    body: ClientMsgBody::Login(uname),
+                    ..
+                }) = serde_json::from_str::<ClientMsg>(login_msg.to_text().unwrap_or(""))
+                {
+                    user_name = uname;
+                }
+            }
+        } else {
+            // user_name = ws_source.next().await.unwrap().unwrap().to_string();
+            panic!("8==========D\nFucked it mate.\nc=========8")
+        }
         let user = Arc::new(Mutex::new(User::new(
             global_room_hash,
             user_id,
             false,
-            user_name.to_string(),
+            user_name.clone(),
         )));
 
         let user_inbox = register_user(user.clone(), rooms.clone(), global_room_hash);
-        info!("Registered: {}", user_name.to_string());
+        info!("Registered: {}", user_name.clone());
 
         // prepare channels
         let (cmd_sink, cmd_source) = unbounded::<Message>();
