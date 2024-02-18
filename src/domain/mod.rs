@@ -1,4 +1,4 @@
 pub mod room;
-pub mod user;
 pub mod types;
+pub mod user;
 pub mod util;

@@ -1,4 +1,7 @@
-use std::{collections::VecDeque, sync::{Arc, Mutex}};
+use std::{
+    collections::{HashMap, VecDeque},
+    sync::{Arc, Mutex},
+};
 
 use tokio_tungstenite::tungstenite::Message;
 
@@ -15,7 +18,7 @@ impl Room {
         Room {
             occupants,
             message_bus,
-            bus_max: 25
+            bus_max: 25,
         }
     }
 
@@ -25,5 +28,14 @@ impl Room {
 
     pub fn remove_oldest_message(&mut self) {
         self.message_bus.lock().unwrap().pop_front();
+    }
+}
+
+impl Default for Room {
+    fn default() -> Self {
+        Room::new(
+            Arc::new(Mutex::new(HashMap::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+        )
     }
 }
