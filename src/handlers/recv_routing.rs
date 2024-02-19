@@ -2,7 +2,8 @@ use std::sync::{Arc, Mutex};
 
 use futures_channel::mpsc::UnboundedSender;
 use futures_util::{future, stream::SplitStream, StreamExt};
-use log::{info, warn};
+use log::{self, warn};
+use marain_api::prelude::*;
 use tokio::net::TcpStream;
 use tokio_tungstenite::{tungstenite::Message, WebSocketStream};
 
@@ -12,7 +13,7 @@ pub async fn recv_routing_handler(
     ws_source: SplitStream<WebSocketStream<TcpStream>>,
     user: Arc<Mutex<User>>,
     command_pipe: UnboundedSender<Message>,
-    message_pipe: UnboundedSender<Message>,
+    message_pipe: UnboundedSender<ClientMsg>,
     room_map: LockedRoomMap,
 ) {
     _ = ws_source
@@ -25,11 +26,23 @@ pub async fn recv_routing_handler(
                         let msg_str = msg.to_text().unwrap();
                         let chars: Vec<char> = msg_str.chars().collect();
                         if chars[0] == '/' {
-                            info!("forwarding to command worker");
+                            log::info!("forwarding to command worker");
                             command_pipe.unbounded_send(msg).unwrap();
                         } else {
-                            info!("forwarding global message worker");
-                            message_pipe.unbounded_send(msg).unwrap()
+                            match serde_json::from_str::<ClientMsg>(msg_str) {
+                                Err(_) => warn!("Unrecognised message from client: {msg_str}"),
+                                Ok(cm) => match cm {
+                                    ClientMsg {
+                                        token: Some(_),
+                                        body: ClientMsgBody::SendToRoom { .. },
+                                        ..
+                                    } => {
+                                        message_pipe.unbounded_send(cm).unwrap();
+                                        log::info!("published chat message")
+                                    }
+                                    _ => {}
+                                },
+                            };
                         }
                     }
                 }
