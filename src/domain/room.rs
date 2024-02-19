@@ -4,7 +4,7 @@ use std::{
 };
 
 use futures_channel::mpsc::UnboundedSender;
-use tokio_tungstenite::tungstenite::Message;
+use marain_api::prelude::ServerMsg;
 
 use super::{chat_log::MessageLog, types::LockedPeerMap};
 
@@ -40,7 +40,7 @@ impl Room {
         };
     }
 
-    pub fn get_recipients_except(&self, user_id: &str) -> Vec<UnboundedSender<Message>> {
+    pub fn get_recipients_except(&self, user_id: &str) -> Vec<UnboundedSender<ServerMsg>> {
         let occupants = self.occupants.lock().unwrap();
         occupants
             .iter()

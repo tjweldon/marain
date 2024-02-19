@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use futures_channel::mpsc::UnboundedReceiver;
 use futures_util::{stream::SplitSink, SinkExt, StreamExt};
 use log::{self, error};
-use marain_api::prelude::ClientMsg;
+use marain_api::prelude::{ChatMsg, ClientMsg, ServerMsg, ServerMsgBody, Status};
 use tokio::net::TcpStream;
 use tokio_tungstenite::{tungstenite::Message, WebSocketStream};
 
@@ -14,7 +14,7 @@ pub async fn global_message_handler(
     mut message: UnboundedReceiver<ClientMsg>,
     room_map: LockedRoomMap,
     user: Arc<Mutex<User>>,
-    mut user_inbox: UnboundedReceiver<Message>,
+    mut user_inbox: UnboundedReceiver<ServerMsg>,
 ) {
     // Extract the user id and name for read only use for the lifetime of this worker.
     // Exit gracefully with error log if the lock cannot be acquired.
@@ -31,8 +31,8 @@ pub async fn global_message_handler(
     let user_id: &str = &user_id;
     'main_loop: loop {
         tokio::select! {
-            broadcast_msg_from_usr = message.next() => {
-                let Some(ref msg_ref) = broadcast_msg_from_usr else {
+            msg_from_user = message.next() => {
+                let Some(ref msg_ref) = msg_from_user else {
                     break
                 };
                 let msg: ClientMsg = msg_ref.clone();
@@ -52,26 +52,42 @@ pub async fn global_message_handler(
                 if let Some(user_room) = rooms.get_mut(&user_room_id) {
 
                     if let Some(msg_log) = MessageLog::from_client_msg(msg.clone(), &user_name) {
-                        user_room.new_message(msg_log);
+                        user_room.new_message(msg_log.clone());
                         user_room.remove_oldest_message();
-                    }
-                    let serialised = match serde_json::to_string(&msg) {
-                        Ok(s) => s,
-                        _ => {
-                            continue 'main_loop;
+
+                        // the broadcast message is the same for every receipient
+                        let broadcast_msg = ServerMsg {
+                            status: Status::Yes,
+                            timestamp: msg.timestamp.clone(),
+                            body: ServerMsgBody::ChatRecv {
+                                direct: false,
+                                chat_msg: ChatMsg {
+                                    sender: user_name.clone(),
+                                    timestamp: msg.timestamp.clone(),
+                                    content: msg_log.contents.clone()
+                                }
+                            }
+                        };
+
+                        for receipient in user_room.get_recipients_except(user_id) {
+                            receipient
+                                .unbounded_send(broadcast_msg.clone())
+                                .unwrap_or_else(|e| error!("{}", e))
                         }
-                    };
-                    for receipient in user_room.get_recipients_except(user_id) {
-                        receipient
-                            .unbounded_send(Message::Text(serialised.clone()))
-                            .unwrap_or_else(|e| error!("{}", e))
                     }
                 }
             }
 
-            broacst_msg_to_usr = user_inbox.next() => {
-                match broacst_msg_to_usr.clone() {
-                    Some(m) => ws_sink.send(m).await.unwrap_or_else(|e| error!("{}", e)),
+            msg_to_usr = user_inbox.next() => {
+                match msg_to_usr {
+                    Some(m) => {
+                        match serde_json::to_string(&m) {
+                            Ok(ser) => ws_sink.send(Message::Text(ser)).await.unwrap_or_else(|e| error!("{}", e)),
+                            Err(e) => {
+                                log::error!("Could not broadcast: {e}");
+                            }
+                        }
+                    }
                     None => {}
                 }
             }

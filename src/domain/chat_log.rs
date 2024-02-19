@@ -5,9 +5,9 @@ use marain_api::prelude::{ClientMsg, ClientMsgBody};
 
 #[derive(Debug, Clone)]
 pub struct MessageLog {
-    username: String,
-    timestamp: DateTime<Utc>,
-    contents: String,
+    pub username: String,
+    pub timestamp: DateTime<Utc>,
+    pub contents: String,
 }
 
 impl MessageLog {
