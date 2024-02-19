@@ -1,0 +1,3 @@
+export RUST_LOG=info
+export RUST_BACKTRACE=1
+export MARAIN_PORT=1337

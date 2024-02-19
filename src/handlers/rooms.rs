@@ -9,6 +9,7 @@ use log::{error, info};
 use tokio_tungstenite::tungstenite::Message;
 
 use crate::domain::{
+    chat_log::MessageLog,
     room::Room,
     types::{LockedRoomMap, RoomMap},
     user::User,
@@ -81,19 +82,17 @@ fn move_rooms(rooms: &MutexGuard<RoomMap>, user: &Arc<Mutex<User>>, room_hash: u
         );
 
     // send the rooms message history to the user upon arrival.
-    let msg_bus = rooms.get(&room_hash).unwrap().message_bus.lock().unwrap();
+    let msg_bus = rooms.get(&room_hash).unwrap().chat_log.lock().unwrap();
     let history = prep_message_history(msg_bus.clone());
     channel.unbounded_send(history).unwrap();
     user.lock().unwrap().up_to_date = true;
 }
 
-fn prep_message_history(msg_bus: VecDeque<Message>) -> Message {
-    let history = msg_bus
-        .iter()
-        .map(|m| format!("{}\n", m.to_text().unwrap()));
-    let mut history_str = String::from("");
-    for s in history {
-        history_str += &s;
-    }
-    Message::Text(history_str)
+fn prep_message_history(msg_bus: VecDeque<MessageLog>) -> Message {
+    Message::Text(
+        msg_bus
+            .iter()
+            .map(|msg_log| format!("{}", msg_log))
+            .fold("".to_string(), |acc, el| acc + &el),
+    )
 }

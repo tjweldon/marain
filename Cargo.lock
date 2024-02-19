@@ -43,9 +43,9 @@ dependencies = [
 
 [[package]]
 name = "anstream"
-version = "0.6.11"
+version = "0.6.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e2e1ebcb11de5c03c67de28a7df593d32191b44939c482e97702baaaa6ab6a5"
+checksum = "96b09b5178381e0874812a9b157f7fe84982617e48f71f4e3235482775e5b540"
 dependencies = [
  "anstyle",
  "anstyle-parse",
@@ -445,7 +445,7 @@ checksum = "b5e6163cb8c49088c2c36f57875e58ccd8c87c7427f7fbd50ea6710b2f3f2e8f"
 [[package]]
 name = "marain-api"
 version = "0.1.0"
-source = "git+https://github.com/tjweldon/marain-api.git?rev=refs/heads/main#cc0e8f6fec66e410d39d92ddd3f7bb36b1df9c7c"
+source = "git+https://github.com/tjweldon/marain-api.git?rev=refs/heads/main#cf7417a1e130229ca11c2ebd187eedb5bd2c62cc"
 dependencies = [
  "chrono",
  "serde",

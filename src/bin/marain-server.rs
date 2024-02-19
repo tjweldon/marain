@@ -76,7 +76,6 @@ async fn main() -> Result<()> {
                 }
             }
         } else {
-            // user_name = ws_source.next().await.unwrap().unwrap().to_string();
             panic!("8==========D\nFucked it mate.\nc=========8")
         }
         let user = Arc::new(Mutex::new(User::new(
@@ -89,10 +88,30 @@ async fn main() -> Result<()> {
         let user_inbox = register_user(user.clone(), rooms.clone(), global_room_hash);
         info!("Registered: {}", user_name.clone());
 
-        // prepare channels
+        // worker initialisation
+        // =====================
+
+        //  chat messages (incoming)
+        let (msg_sink, msg_source) = unbounded::<ClientMsg>();
+        tokio::spawn(global_message_handler(
+            ws_sink,
+            msg_source,
+            rooms.clone(),
+            user.clone(),
+            user_inbox,
+        ));
+
+        //  command messages (incoming)
         let (cmd_sink, cmd_source) = unbounded::<Message>();
-        let (msg_sink, msg_source) = unbounded::<Message>();
+        //  command handling (room state worker)
         let (room_sink, room_source) = unbounded::<Message>();
+        tokio::spawn(command_handler(
+            cmd_source,
+            room_sink,
+            user.clone(),
+            rooms.clone(),
+        ));
+        tokio::spawn(room_handler(room_source, user.clone(), rooms.clone()));
 
         // spawn workers
         tokio::spawn(recv_routing_handler(
@@ -101,20 +120,6 @@ async fn main() -> Result<()> {
             cmd_sink,
             msg_sink,
             rooms.clone(),
-        ));
-        tokio::spawn(command_handler(
-            cmd_source,
-            room_sink,
-            user.clone(),
-            rooms.clone(),
-        ));
-        tokio::spawn(room_handler(room_source, user.clone(), rooms.clone()));
-        tokio::spawn(global_message_handler(
-            ws_sink,
-            msg_source,
-            rooms.clone(),
-            user.clone(),
-            user_inbox,
         ));
     }
 
