@@ -9,8 +9,10 @@ use marain_api::prelude::{ClientMsg, ClientMsgBody, ServerMsg, ServerMsgBody, St
 use marain_server::{
     domain::{room::Room, types::LockedRoomMap, user::User, util::hash},
     handlers::{
-        commands::{command_handler, Commands}, messages::global_message_handler,
-        recv_routing::recv_routing_handler, rooms::room_handler,
+        commands::{command_handler, Commands},
+        messages::global_message_handler,
+        recv_routing::recv_routing_handler,
+        rooms::room_handler,
     },
 };
 use std::{
@@ -115,14 +117,19 @@ async fn main() -> Result<()> {
         //  command messages (incoming)
         let (cmd_sink, cmd_source) = unbounded::<Commands>();
         //  command handling (room state worker)
-        let (room_sink, room_source) = unbounded::<Message>();
+        let (room_sink, room_source) = unbounded::<Commands>();
         tokio::spawn(command_handler(
             cmd_source,
             room_sink,
             user.clone(),
             rooms.clone(),
         ));
-        tokio::spawn(room_handler(room_source, user.clone(), rooms.clone()));
+        tokio::spawn(room_handler(
+            room_source,
+            user.clone(),
+            rooms.clone(),
+            cmd_sink.clone(),
+        ));
 
         // spawn workers
         tokio::spawn(recv_routing_handler(

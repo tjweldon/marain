@@ -22,6 +22,7 @@ pub async fn recv_routing_handler(
         .for_each(|msg_maybe| {
             match msg_maybe {
                 Ok(msg) => {
+                    log::info!("MESSAGE ARRIVED {msg:?}");
                     if msg.is_close() {
                         remove_user(room_map.clone(), user.clone());
                     } else if msg.is_text() {
