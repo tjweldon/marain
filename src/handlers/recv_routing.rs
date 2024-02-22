@@ -5,14 +5,16 @@ use futures_util::{future, stream::SplitStream, StreamExt};
 use log::{self, warn};
 use marain_api::prelude::*;
 use tokio::net::TcpStream;
-use tokio_tungstenite::{tungstenite::Message, WebSocketStream};
+use tokio_tungstenite::WebSocketStream;
 
 use crate::domain::{room::Room, types::LockedRoomMap, user::User};
+
+use super::commands::Commands;
 
 pub async fn recv_routing_handler(
     ws_source: SplitStream<WebSocketStream<TcpStream>>,
     user: Arc<Mutex<User>>,
-    command_pipe: UnboundedSender<Message>,
+    command_pipe: UnboundedSender<Commands>,
     message_pipe: UnboundedSender<ClientMsg>,
     room_map: LockedRoomMap,
 ) {
@@ -20,30 +22,34 @@ pub async fn recv_routing_handler(
         .for_each(|msg_maybe| {
             match msg_maybe {
                 Ok(msg) => {
+                    log::info!("MESSAGE ARRIVED {msg:?}");
                     if msg.is_close() {
                         remove_user(room_map.clone(), user.clone());
                     } else if msg.is_text() {
                         let msg_str = msg.to_text().unwrap();
-                        let chars: Vec<char> = msg_str.chars().collect();
-                        if chars[0] == '/' {
-                            log::info!("forwarding to command worker");
-                            command_pipe.unbounded_send(msg).unwrap();
-                        } else {
-                            match serde_json::from_str::<ClientMsg>(msg_str) {
-                                Err(_) => warn!("Unrecognised message from client: {msg_str}"),
-                                Ok(cm) => match cm {
-                                    ClientMsg {
-                                        token: Some(_),
-                                        body: ClientMsgBody::SendToRoom { .. },
-                                        ..
-                                    } => {
-                                        message_pipe.unbounded_send(cm).unwrap();
-                                        log::info!("published chat message")
-                                    }
-                                    _ => {}
-                                },
-                            };
-                        }
+                        match serde_json::from_str::<ClientMsg>(msg_str) {
+                            Err(_) => warn!("Unrecognised message from client: {msg_str}"),
+                            Ok(cm) => match cm {
+                                ClientMsg {
+                                    token: Some(_),
+                                    body: ClientMsgBody::SendToRoom { .. },
+                                    ..
+                                } => {
+                                    message_pipe.unbounded_send(cm).unwrap();
+                                    log::info!("published chat message")
+                                }
+                                ClientMsg {
+                                    token: Some(_),
+                                    body: ClientMsgBody::GetTime,
+                                    ..
+                                } => {
+                                    command_pipe.unbounded_send(Commands::GetTime).unwrap();
+                                    log::info!("Pushed Time command to handler")
+                                }
+
+                                _ => {}
+                            },
+                        };
                     }
                 }
                 Err(e) => {

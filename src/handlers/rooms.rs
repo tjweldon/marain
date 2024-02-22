@@ -3,10 +3,10 @@ use std::{
     sync::{Arc, Mutex, MutexGuard},
 };
 
-use futures_channel::mpsc::UnboundedReceiver;
+use futures_channel::mpsc::{UnboundedReceiver, UnboundedSender};
 use futures_util::StreamExt;
 use log::{error, info};
-use tokio_tungstenite::tungstenite::Message;
+use marain_api::prelude::{ChatMsg, ServerMsg, Timestamp};
 
 use crate::domain::{
     room::Room,
@@ -15,38 +15,65 @@ use crate::domain::{
     util::hash,
 };
 
+use super::commands::Commands;
+
 pub async fn room_handler(
-    mut room_source: UnboundedReceiver<Message>,
+    mut room_source: UnboundedReceiver<Commands>,
     user: Arc<Mutex<User>>,
     room_map: LockedRoomMap,
+    cmd_sink: UnboundedSender<Commands>,
 ) {
+    let worker_user = user.lock().unwrap().id.clone();
     while let Some(cmd) = room_source.next().await {
-        let room_hash = hash(cmd.to_text().unwrap().to_string());
-
-        let mut rooms: std::sync::MutexGuard<RoomMap> = room_map.lock().unwrap();
-
-        if rooms.contains_key(&room_hash) {
-            move_rooms(&rooms, &user, room_hash);
-        } else {
-            info!("attempting to create room: {} : {}", cmd, room_hash);
-            let created = rooms.insert(
-                room_hash,
-                Room::new(
-                    Arc::new(Mutex::new(HashMap::new())),
-                    Arc::new(Mutex::new(VecDeque::new())),
-                ),
-            );
-            match created {
-                None => move_rooms(&rooms, &user, room_hash),
-                Some(_) => {
-                    error!("Rooms did not contain key but room was found on insert attempt.")
+        match cmd {
+            Commands::Move {
+                user_id: requesting_user,
+                target,
+            } => {
+                if requesting_user != user.lock().unwrap().id {
+                    log::error!("Received a command from a user not for this worker: Requesting User ID: {requesting_user}, Workers User: {worker_user}");
+                    continue;
                 }
+
+                let room_hash = hash(target.clone());
+                let mut rooms: std::sync::MutexGuard<RoomMap> = room_map.lock().unwrap();
+
+                if rooms.contains_key(&room_hash) {
+                    move_rooms(&rooms, &user, room_hash.clone(), cmd_sink.clone());
+                } else {
+                    info!("attempting to create room: {:?} : {}", target, room_hash);
+                    let created = rooms.insert(
+                        room_hash,
+                        Room::new(
+                            Arc::new(Mutex::new(HashMap::new())),
+                            Arc::new(Mutex::new(VecDeque::new())),
+                        ),
+                    );
+                    match created {
+                        None => move_rooms(&rooms, &user, room_hash, cmd_sink.clone()),
+                        Some(_) => {
+                            error!(
+                                "Rooms did not contain key but room was found on insert attempt."
+                            );
+                            continue;
+                        }
+                    }
+                }
+            }
+            _ => {
+                log::warn!("Upstream channel closed.");
+                break;
             }
         }
     }
 }
 
-fn move_rooms(rooms: &MutexGuard<RoomMap>, user: &Arc<Mutex<User>>, room_hash: u64) {
+fn move_rooms(
+    rooms: &MutexGuard<RoomMap>,
+    user: &Arc<Mutex<User>>,
+    room_hash: u64,
+    cmd_sink: UnboundedSender<Commands>,
+) {
     info!(
         "Moving user_id: {} to {}",
         user.lock().unwrap().id,
@@ -67,16 +94,48 @@ fn move_rooms(rooms: &MutexGuard<RoomMap>, user: &Arc<Mutex<User>>, room_hash: u
     // update user with new room id, reset chat history flag.
     user.lock().unwrap().room = room_hash;
     user.lock().unwrap().up_to_date = false;
+    let room = rooms.get(&room_hash).unwrap();
 
-    // insert the user into the room.
-    rooms
-        .get(&room_hash)
-        .unwrap()
-        .occupants
+    let mut occupants: MutexGuard<
+        '_,
+        HashMap<
+            String,
+            (
+                Arc<Mutex<User>>,
+                UnboundedSender<marain_api::prelude::ServerMsg>,
+            ),
+        >,
+    > = room.occupants.lock().unwrap();
+    occupants.insert(
+        user.lock().unwrap().id.clone(),
+        (user.clone(), channel.clone()),
+    );
+
+    push_destination_room_data(room, occupants, cmd_sink.clone())
+}
+
+fn push_destination_room_data(
+    room: &Room,
+    occupants: MutexGuard<HashMap<String, (Arc<Mutex<User>>, UnboundedSender<ServerMsg>)>>,
+    cmd_sink: UnboundedSender<Commands>,
+) {
+    let chat_messages: Vec<ChatMsg> = room
+        .chat_log
         .lock()
         .unwrap()
-        .insert(
-            user.lock().unwrap().id.clone(),
-            (user.clone(), channel.clone()),
-        );
+        .iter()
+        .map(|m| ChatMsg {
+            sender: m.username.clone(),
+            timestamp: Timestamp::from(m.timestamp),
+            content: m.contents.clone(),
+        })
+        .collect();
+    let room_data = Commands::SendRoomData {
+        messages: chat_messages,
+        occupants: occupants
+            .values()
+            .map(|(o, _)| o.lock().unwrap().name.clone())
+            .collect(),
+    };
+    cmd_sink.unbounded_send(room_data).unwrap();
 }
