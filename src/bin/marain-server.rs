@@ -9,7 +9,7 @@ use marain_api::prelude::{ClientMsg, ClientMsgBody, ServerMsg, ServerMsgBody, St
 use marain_server::{
     domain::{room::Room, types::LockedRoomMap, user::User, util::hash},
     handlers::{
-        commands::command_handler, messages::global_message_handler,
+        commands::{command_handler, Commands}, messages::global_message_handler,
         recv_routing::recv_routing_handler, rooms::room_handler,
     },
 };
@@ -113,7 +113,7 @@ async fn main() -> Result<()> {
         ));
 
         //  command messages (incoming)
-        let (cmd_sink, cmd_source) = unbounded::<Message>();
+        let (cmd_sink, cmd_source) = unbounded::<Commands>();
         //  command handling (room state worker)
         let (room_sink, room_source) = unbounded::<Message>();
         tokio::spawn(command_handler(

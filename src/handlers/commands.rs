@@ -12,8 +12,14 @@ use crate::domain::{
     user::User,
 };
 
+
+pub enum Commands {
+    GetTime
+}
+
+
 pub async fn command_handler(
-    mut cmd_source: UnboundedReceiver<Message>,
+    mut cmd_source: UnboundedReceiver<Commands>,
     room_sink: UnboundedSender<Message>,
     user: Arc<Mutex<User>>,
     room: LockedRoomMap,
@@ -40,7 +46,7 @@ pub async fn command_handler(
 fn prepare_route_command(
     locked_occupants: Result<MutexGuard<PeerMap>, PoisonError<MutexGuard<PeerMap>>>,
     user: &Arc<Mutex<User>>,
-    cmd: Message,
+    cmd: Commands,
     room_sink: &UnboundedSender<Message>,
 ) {
     // Scans the room the user is in and gets their sink for any command with an echoed response.
@@ -68,32 +74,27 @@ fn prepare_route_command(
 
 #[allow(unused_variables)]
 fn route_command(
-    cmd: Message,
+    cmd: Commands,
     commander: UnboundedSender<ServerMsg>,
     room_handler_sink: &UnboundedSender<Message>,
     occupants: MutexGuard<PeerMap>,
     user: &Arc<Mutex<User>>,
 ) {
-    if cmd.is_text() {
-        match commander.unbounded_send(ServerMsg {
-            status: Status::No("Not implemented".into()),
-            timestamp: Timestamp::from(Utc::now()),
-            body: ServerMsgBody::Empty,
-        }) {
-            Err(e) => {
-                log::error!("Could not send message to user: {e}")
-            }
-            _ => {}
+    match cmd {
+        Commands::GetTime => {
+            commander.unbounded_send(
+                ServerMsg {
+                    status: Status::Yes,
+                    timestamp: Timestamp::from(Utc::now()),
+                    body: ServerMsgBody::Empty
+                }
+            ).expect("Failed to send response to client for GetTime command")
         }
+    }
+
         // TODO:
         //let cmd_str: Vec<&str> = cmd.to_text().unwrap_or("").split(" ").collect();
         //match cmd_str[0] {
-        //    "/time" => {
-        //        let m = Message::Binary(Utc::now().to_string().as_bytes().to_vec());
-        //        commander
-        //            .unbounded_send(m)
-        //            .unwrap_or_else(|e| error!("{}", e));
-        //    }
         //    "/mv" => {
         //        info!("forwarding to room handler");
         //        room_handler_sink
@@ -110,7 +111,4 @@ fn route_command(
         //        .unbounded_send(Message::Binary("No such command".as_bytes().to_vec()))
         //        .unwrap_or_else(|e| error!("{}", e)),
         //}
-    } else {
-        log::error!("Non Text command: {cmd}")
-    }
 }
