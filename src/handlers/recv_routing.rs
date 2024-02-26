@@ -46,6 +46,13 @@ pub async fn recv_routing_handler(
                                     command_pipe.unbounded_send(Commands::GetTime).unwrap();
                                     log::info!("Pushed Time command to handler")
                                 }
+                                ClientMsg { token: Some(id), body: ClientMsgBody::Move { target }, .. } => {
+                                    command_pipe
+                                        .unbounded_send(Commands::Move { user_id: id, target })
+                                        .unwrap();
+
+                                    log::info!("Pushed move command to handler");
+                                }
 
                                 _ => {}
                             },
