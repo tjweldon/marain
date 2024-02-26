@@ -15,6 +15,7 @@ use marain_server::{
         rooms::room_handler,
     },
 };
+use serde_binary::binary_stream::Endian;
 use std::{
     collections::{HashMap, VecDeque},
     sync::{Arc, Mutex},
@@ -68,12 +69,12 @@ async fn main() -> Result<()> {
         let mut user_name: String = "".into();
         // create & register user in landing room
         if let Some(Ok(login_msg)) = ws_source.next().await {
-            if login_msg.is_text() {
+            if login_msg.is_binary() {
                 if let Ok(ClientMsg {
                     token: None,
                     body: ClientMsgBody::Login(uname),
                     ..
-                }) = serde_json::from_str::<ClientMsg>(login_msg.to_text().unwrap_or(""))
+                }) = serde_binary::from_vec::<ClientMsg>(login_msg.into_data(), Endian::Little)
                 {
                     user_name = uname;
                 }

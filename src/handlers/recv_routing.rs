@@ -4,6 +4,7 @@ use futures_channel::mpsc::UnboundedSender;
 use futures_util::{future, stream::SplitStream, StreamExt};
 use log::{self, warn};
 use marain_api::prelude::*;
+use serde_binary::binary_stream::Endian;
 use tokio::net::TcpStream;
 use tokio_tungstenite::WebSocketStream;
 
@@ -25,10 +26,10 @@ pub async fn recv_routing_handler(
                     log::info!("MESSAGE ARRIVED {msg:?}");
                     if msg.is_close() {
                         remove_user(room_map.clone(), user.clone());
-                    } else if msg.is_text() {
-                        let msg_str = msg.to_text().unwrap();
-                        match serde_json::from_str::<ClientMsg>(msg_str) {
-                            Err(_) => warn!("Unrecognised message from client: {msg_str}"),
+                    } else if msg.is_binary() {
+                        let msg_bytes = msg.into_data();
+                        match serde_binary::from_vec::<ClientMsg>(msg_bytes, Endian::Little) {
+                            Err(e) => log::warn!("Unrecognised message from client: {e}"),
                             Ok(cm) => match cm {
                                 ClientMsg {
                                     token: Some(_),
@@ -46,9 +47,16 @@ pub async fn recv_routing_handler(
                                     command_pipe.unbounded_send(Commands::GetTime).unwrap();
                                     log::info!("Pushed Time command to handler")
                                 }
-                                ClientMsg { token: Some(id), body: ClientMsgBody::Move { target }, .. } => {
+                                ClientMsg {
+                                    token: Some(id),
+                                    body: ClientMsgBody::Move { target },
+                                    ..
+                                } => {
                                     command_pipe
-                                        .unbounded_send(Commands::Move { user_id: id, target })
+                                        .unbounded_send(Commands::Move {
+                                            user_id: id,
+                                            target,
+                                        })
                                         .unwrap();
 
                                     log::info!("Pushed move command to handler");
