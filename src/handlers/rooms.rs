@@ -5,7 +5,7 @@ use std::{
 
 use futures_channel::mpsc::{UnboundedReceiver, UnboundedSender};
 use futures_util::StreamExt;
-use log::{error, info};
+use log::info;
 use marain_api::prelude::{ChatMsg, ServerMsg, Timestamp};
 
 use crate::domain::{
@@ -52,7 +52,7 @@ pub async fn room_handler(
                     match created {
                         None => move_rooms(&rooms, &user, room_hash, cmd_sink.clone()),
                         Some(_) => {
-                            error!(
+                            log::error!(
                                 "Rooms did not contain key but room was found on insert attempt."
                             );
                             continue;
