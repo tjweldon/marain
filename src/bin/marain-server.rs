@@ -4,7 +4,7 @@ use chrono::Utc;
 use env_logger;
 use futures_channel::mpsc::{unbounded, UnboundedReceiver};
 use futures_util::{SinkExt, StreamExt};
-use log::{info, warn};
+use log::info;
 use marain_api::prelude::{ClientMsg, ClientMsgBody, ServerMsg, ServerMsgBody, Status, Timestamp};
 use marain_server::{
     domain::{room::Room, types::LockedRoomMap, user::User, util::hash},
@@ -15,7 +15,6 @@ use marain_server::{
         rooms::room_handler,
     },
 };
-use serde_binary::binary_stream::Endian;
 use std::{
     collections::{HashMap, VecDeque},
     sync::{Arc, Mutex},
@@ -37,7 +36,7 @@ async fn main() -> Result<()> {
     let mut port = getenv("MARAIN_PORT");
     if port.len() == 0 {
         port = "8080".to_string();
-        warn!("Could not find MARAIN_PORT environment variable. Falling back to 8080.");
+        log::warn!("Could not find MARAIN_PORT environment variable. Falling back to 8080.");
     }
 
     let addr = format!("0.0.0.0:{}", port);
@@ -69,12 +68,12 @@ async fn main() -> Result<()> {
         let mut user_name: String = "".into();
         // create & register user in landing room
         if let Some(Ok(login_msg)) = ws_source.next().await {
-            if login_msg.is_binary() {
+            if let Message::Binary(data) = login_msg {
                 if let Ok(ClientMsg {
                     token: None,
                     body: ClientMsgBody::Login(uname),
                     ..
-                }) = serde_binary::from_vec::<ClientMsg>(login_msg.into_data(), Endian::Little)
+                }) = bincode::deserialize::<ClientMsg>(&data)
                 {
                     user_name = uname;
                 }
@@ -98,8 +97,9 @@ async fn main() -> Result<()> {
                 token: user_id.clone(),
             },
         };
-        let serialised = serde_json::to_string(&login_ok).expect("Could not serialize api message");
-        ws_sink.send(Message::Text(serialised)).await.unwrap();
+        let serialised: Vec<u8> =
+            bincode::serialize(&login_ok).expect("Could not serialize api message");
+        ws_sink.send(Message::Binary(serialised)).await.unwrap();
         info!("Registered: {}", user_name.clone());
 
         // worker initialisation

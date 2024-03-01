@@ -69,10 +69,10 @@ pub async fn global_message_handler(
                             }
                         };
 
-                        for receipient in user_room.get_recipients_except(user_id) {
+                        for (_, receipient) in user_room.occupants.lock().unwrap().values() {
                             receipient
                                 .unbounded_send(broadcast_msg.clone())
-                                .unwrap_or_else(|e| error!("{}", e))
+                                .unwrap_or_else(|e| log::error!("{}", e))
                         }
                     }
                 }
@@ -81,8 +81,8 @@ pub async fn global_message_handler(
             msg_to_usr = user_inbox.next() => {
                 match msg_to_usr {
                     Some(m) => {
-                        match serde_json::to_string(&m) {
-                            Ok(ser) => ws_sink.send(Message::Text(ser)).await.unwrap_or_else(|e| error!("{}", e)),
+                        match bincode::serialize(&m) {
+                            Ok(ser) => ws_sink.send(Message::Binary(ser)).await.unwrap_or_else(|e| error!("{}", e)),
                             Err(e) => {
                                 log::error!("Could not broadcast: {e}");
                             }

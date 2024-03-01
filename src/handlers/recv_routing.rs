@@ -2,9 +2,8 @@ use std::sync::{Arc, Mutex};
 
 use futures_channel::mpsc::UnboundedSender;
 use futures_util::{future, stream::SplitStream, StreamExt};
-use log::{self, warn};
+use log;
 use marain_api::prelude::*;
-use serde_binary::binary_stream::Endian;
 use tokio::net::TcpStream;
 use tokio_tungstenite::WebSocketStream;
 
@@ -28,7 +27,7 @@ pub async fn recv_routing_handler(
                         remove_user(room_map.clone(), user.clone());
                     } else if msg.is_binary() {
                         let msg_bytes = msg.into_data();
-                        match serde_binary::from_vec::<ClientMsg>(msg_bytes, Endian::Little) {
+                        match bincode::deserialize::<ClientMsg>(&msg_bytes[..]) {
                             Err(e) => log::warn!("Unrecognised message from client: {e}"),
                             Ok(cm) => match cm {
                                 ClientMsg {
@@ -69,7 +68,7 @@ pub async fn recv_routing_handler(
                 }
                 Err(e) => {
                     remove_user(room_map.clone(), user.clone());
-                    warn!("Disconnected user due to upstream error: {e}");
+                    log::warn!("Disconnected user due to upstream error: {e}");
                 }
             }
 
