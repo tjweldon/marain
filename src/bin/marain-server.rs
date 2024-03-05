@@ -26,7 +26,7 @@ use tokio_tungstenite::{
     WebSocketStream,
 };
 use uuid::Uuid;
-use x25519_dalek::{EphemeralSecret, PublicKey, SharedSecret};
+use x25519_dalek::{EphemeralSecret, PublicKey};
 
 fn getenv(name: &str) -> String {
     match std::env::var(name) {
@@ -35,7 +35,7 @@ fn getenv(name: &str) -> String {
     }
 }
 
-fn create_key_pair(rng: OsRng) -> (EphemeralSecret, PublicKey) {
+fn create_key_pair() -> (EphemeralSecret, PublicKey) {
     let server_secret = EphemeralSecret::random_from_rng(OsRng);
     let server_public = PublicKey::from(&server_secret);
 
@@ -93,7 +93,7 @@ async fn main() -> Result<()> {
         let (mut ws_sink, mut ws_source) = ws_stream.split();
 
         // Generate a key pair for the server
-        let (server_secret, server_public) = create_key_pair(OsRng);
+        let (server_secret, server_public) = create_key_pair();
 
         // Prepare user fields for login message deserialization.
         let user_id = format!("{:X}", Uuid::new_v4().as_u128());
