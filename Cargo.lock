@@ -178,9 +178,9 @@ dependencies = [
 
 [[package]]
 name = "bumpalo"
-version = "3.15.3"
+version = "3.15.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ea184aa71bb362a1157c896979544cc23974e08fd265f29ea96b59f0b4a555b"
+checksum = "7ff69b9dd49fd426c69a0db9fc04dd934cdb6645ff000864d98f7e2af8830eaa"
 
 [[package]]
 name = "bytemuck"
@@ -573,7 +573,7 @@ checksum = "90ed8c1e510134f979dbc4f070f87d4313098b704861a105fe34231c70a3901c"
 [[package]]
 name = "marain-api"
 version = "0.1.0"
-source = "git+https://github.com/tjweldon/marain-api.git?rev=refs/heads/main#12aa6267fb85e0ed5fde48e8aea7353e7d228482"
+source = "git+https://github.com/tjweldon/marain-api.git?rev=refs/heads/main#4824be18b6928858fa1ae2ba20955bbdf31b0c02"
 dependencies = [
  "chrono",
  "serde",
@@ -934,7 +934,7 @@ dependencies = [
 [[package]]
 name = "sphinx"
 version = "0.5.0"
-source = "git+https://github.com/Wombatlord/sphinx.git?rev=refs/heads/main#2c292393658f35850b5e11253ba7f3be520199c5"
+source = "git+https://github.com/Wombatlord/sphinx.git?rev=refs/heads/main#527ff683010418f28e1361442603eb0a08e9a1e7"
 dependencies = [
  "argon2",
  "bytemuck",
