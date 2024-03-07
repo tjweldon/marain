@@ -12,10 +12,8 @@ use crate::domain::{room::Room, types::LockedRoomMap, user::User};
 
 use super::commands::Commands;
 
-const INIT_VEC: u64 = 0x00000000_00000000;
-
 fn decrypt(user_key: &[u8; 32], enc: Vec<u8>) -> Option<Vec<u8>> {
-    match cbc_decode(user_key.to_vec(), enc, INIT_VEC) {
+    match cbc_decode(user_key.to_vec(), enc) {
         Ok(dec) => Some(dec),
         Err(e) => {
             log::error!("Failed to decode user message with error: {e}");
