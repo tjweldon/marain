@@ -573,7 +573,7 @@ checksum = "90ed8c1e510134f979dbc4f070f87d4313098b704861a105fe34231c70a3901c"
 [[package]]
 name = "marain-api"
 version = "0.1.0"
-source = "git+https://github.com/tjweldon/marain-api.git?rev=refs/heads/main#4824be18b6928858fa1ae2ba20955bbdf31b0c02"
+source = "git+https://github.com/tjweldon/marain-api.git?rev=refs/heads/main#4c0a9c575a2e1a4651782d02331e2f6e11651562"
 dependencies = [
  "chrono",
  "serde",
