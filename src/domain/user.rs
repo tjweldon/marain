@@ -4,7 +4,7 @@ pub struct User {
     pub id: String,
     pub up_to_date: bool,
     pub name: String,
-    shared_secret: [u8; 32],
+    pub shared_secret: [u8; 32],
 }
 
 impl User {
