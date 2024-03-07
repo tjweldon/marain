@@ -10,9 +10,10 @@ use tokio_tungstenite::{tungstenite::Message, WebSocketStream};
 
 use crate::domain::{chat_log::MessageLog, types::LockedRoomMap, user::User};
 
+
 fn encrypt(key: &[u8; 32], data: Vec<u8>) -> Option<Vec<u8>> {
-    let g = get_rng();
-    match cbc_encode(key.to_vec(), data, g) {
+    let rng = get_rng();
+    match cbc_encode(key.to_vec(), data, rng) {
         Ok(enc) => Some(enc),
         Err(e) => {
             log::error!("Failed to encrypt user message with error: {e}");
