@@ -4,16 +4,16 @@ use futures_channel::mpsc::UnboundedReceiver;
 use futures_util::{stream::SplitSink, SinkExt, StreamExt};
 use log::{self, error};
 use marain_api::prelude::{ChatMsg, ClientMsg, ServerMsg, ServerMsgBody, Status};
-use sphinx::prelude::cbc_encode;
+use sphinx::prelude::{cbc_encode, get_rng};
 use tokio::net::TcpStream;
 use tokio_tungstenite::{tungstenite::Message, WebSocketStream};
 
 use crate::domain::{chat_log::MessageLog, types::LockedRoomMap, user::User};
 
-const INIT_VEC: u64 = 0x00000000_00000000;
 
 fn encrypt(key: &[u8; 32], data: Vec<u8>) -> Option<Vec<u8>> {
-    match cbc_encode(key.to_vec(), data, INIT_VEC) {
+    let rng = get_rng();
+    match cbc_encode(key.to_vec(), data, rng) {
         Ok(enc) => Some(enc),
         Err(e) => {
             log::error!("Failed to encrypt user message with error: {e}");
