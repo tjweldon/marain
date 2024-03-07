@@ -12,10 +12,8 @@ use crate::domain::{room::Room, types::LockedRoomMap, user::User};
 
 use super::commands::Commands;
 
-const INIT_VEC: u64 = 0x00000000_00000000;
-
 fn decrypt(user_key: &[u8; 32], enc: Vec<u8>) -> Option<Vec<u8>> {
-    match cbc_decode(user_key.to_vec(), enc, INIT_VEC) {
+    match cbc_decode(user_key.to_vec(), enc) {
         Ok(dec) => Some(dec),
         Err(e) => {
             log::error!("Failed to decode user message with error: {e}");
@@ -24,14 +22,13 @@ fn decrypt(user_key: &[u8; 32], enc: Vec<u8>) -> Option<Vec<u8>> {
     }
 }
 
-
 fn deserialize(msg: Vec<u8>) -> Option<ClientMsg> {
     match bincode::deserialize::<ClientMsg>(&msg[..]) {
         Ok(cm) => Some(cm),
         Err(e) => {
             log::warn!("Unrecognised message from client: {e}");
             None
-        },
+        }
     }
 }
 
@@ -51,7 +48,7 @@ pub async fn recv_routing_handler(
                     let Some(decoded) = decrypt(&user_key, msg_bytes) else {
                         return future::ready(());
                     };
-                    
+
                     // can fail if deserialization fails
                     let Some(usr_msg) = deserialize(decoded) else {
                         return future::ready(());
@@ -98,12 +95,12 @@ pub async fn recv_routing_handler(
                 Ok(Message::Close(..)) => {
                     remove_user(room_map.clone(), user.clone());
                 }
-                
+
                 // unhandled message formats
                 Ok(Message::Text(..)) | Ok(Message::Ping(..)) | Ok(Message::Pong(..)) | Ok(Message::Frame(..)) => {
                     log::warn!("Received unhandled message format: Mesage::Text | Message::Ping | Message::Pong | Message::Frame")
                 }
-                
+
                 // upstream connection closed
                 Err(e) => {
                     remove_user(room_map.clone(), user.clone());

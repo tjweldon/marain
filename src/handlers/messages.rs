@@ -4,10 +4,23 @@ use futures_channel::mpsc::UnboundedReceiver;
 use futures_util::{stream::SplitSink, SinkExt, StreamExt};
 use log::{self, error};
 use marain_api::prelude::{ChatMsg, ClientMsg, ServerMsg, ServerMsgBody, Status};
+use sphinx::prelude::{cbc_encode, get_rng};
 use tokio::net::TcpStream;
 use tokio_tungstenite::{tungstenite::Message, WebSocketStream};
 
 use crate::domain::{chat_log::MessageLog, types::LockedRoomMap, user::User};
+
+
+fn encrypt(key: &[u8; 32], data: Vec<u8>) -> Option<Vec<u8>> {
+    let rng = get_rng();
+    match cbc_encode(key.to_vec(), data, rng) {
+        Ok(enc) => Some(enc),
+        Err(e) => {
+            log::error!("Failed to encrypt user message with error: {e}");
+            None
+        }
+    }
+}
 
 pub async fn global_message_handler(
     mut ws_sink: SplitSink<WebSocketStream<TcpStream>, Message>,
@@ -18,8 +31,8 @@ pub async fn global_message_handler(
 ) {
     // Extract the user id and name for read only use for the lifetime of this worker.
     // Exit gracefully with error log if the lock cannot be acquired.
-    let Some((user_id, user_name)) = (match user.lock() {
-        Ok(usr) => Some((usr.id.clone(), usr.name.clone())),
+    let Some((user_id, user_name, user_key)) = (match user.lock() {
+        Ok(usr) => Some((usr.id.clone(), usr.name.clone(), usr.shared_secret.clone())),
         _ => None,
     }) else {
         log::error!(
@@ -82,7 +95,16 @@ pub async fn global_message_handler(
                 match msg_to_usr {
                     Some(m) => {
                         match bincode::serialize(&m) {
-                            Ok(ser) => ws_sink.send(Message::Binary(ser)).await.unwrap_or_else(|e| error!("{}", e)),
+                            Ok(ser) => {
+                                match encrypt(&user_key, ser) {
+                                    Some(s) => {
+                                        ws_sink.send(Message::Binary(s)).await.unwrap_or_else(|e| error!("{}", e))
+                                    },
+                                    None => {
+                                        log::error!("Could not broadcast due to encryption error.")
+                                    }
+                                };
+                            },
                             Err(e) => {
                                 log::error!("Could not broadcast: {e}");
                             }
