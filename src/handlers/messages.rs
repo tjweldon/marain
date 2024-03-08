@@ -10,7 +10,6 @@ use tokio_tungstenite::{tungstenite::Message, WebSocketStream};
 
 use crate::domain::{chat_log::MessageLog, types::LockedRoomMap, user::User};
 
-
 fn encrypt(key: &[u8; 32], data: Vec<u8>) -> Option<Vec<u8>> {
     let rng = get_rng();
     match cbc_encode(key.to_vec(), data, rng) {
@@ -22,9 +21,45 @@ fn encrypt(key: &[u8; 32], data: Vec<u8>) -> Option<Vec<u8>> {
     }
 }
 
+async fn message_inbound(
+    room_map: LockedRoomMap,
+    user: Arc<Mutex<User>>,
+    user_name: String,
+    msg: ClientMsg,
+) {
+    let mut rooms = room_map.lock().unwrap();
+    let user_room_id = user.lock().unwrap().room;
+    if let Some(user_room) = rooms.get_mut(&user_room_id) {
+        if let Some(msg_log) = MessageLog::from_client_msg(msg.clone(), &user_name) {
+            user_room.new_message(msg_log.clone());
+            user_room.remove_oldest_message();
+
+            // the broadcast message is the same for every receipient
+            let broadcast_msg = ServerMsg {
+                status: Status::Yes,
+                timestamp: msg.timestamp.clone(),
+                body: ServerMsgBody::ChatRecv {
+                    direct: false,
+                    chat_msg: ChatMsg {
+                        sender: user_name.clone(),
+                        timestamp: msg.timestamp.clone(),
+                        content: msg_log.contents.clone(),
+                    },
+                },
+            };
+
+            for (_, receipient) in user_room.occupants.lock().unwrap().values() {
+                receipient
+                    .unbounded_send(broadcast_msg.clone())
+                    .unwrap_or_else(|e| log::error!("{}", e))
+            }
+        }
+    }
+}
+
 pub async fn global_message_handler(
     mut ws_sink: SplitSink<WebSocketStream<TcpStream>, Message>,
-    mut message: UnboundedReceiver<ClientMsg>,
+    mut message_source: UnboundedReceiver<ClientMsg>,
     room_map: LockedRoomMap,
     user: Arc<Mutex<User>>,
     mut user_inbox: UnboundedReceiver<ServerMsg>,
@@ -44,7 +79,7 @@ pub async fn global_message_handler(
     let user_id: &str = &user_id;
     'main_loop: loop {
         tokio::select! {
-            msg_from_user = message.next() => {
+            msg_from_user = message_source.next() => {
                 let Some(ref msg_ref) = msg_from_user else {
                     break
                 };
@@ -59,36 +94,7 @@ pub async fn global_message_handler(
                     continue 'main_loop;
                 }
 
-
-                let mut rooms = room_map.lock().unwrap();
-                let user_room_id = user.lock().unwrap().room;
-                if let Some(user_room) = rooms.get_mut(&user_room_id) {
-
-                    if let Some(msg_log) = MessageLog::from_client_msg(msg.clone(), &user_name) {
-                        user_room.new_message(msg_log.clone());
-                        user_room.remove_oldest_message();
-
-                        // the broadcast message is the same for every receipient
-                        let broadcast_msg = ServerMsg {
-                            status: Status::Yes,
-                            timestamp: msg.timestamp.clone(),
-                            body: ServerMsgBody::ChatRecv {
-                                direct: false,
-                                chat_msg: ChatMsg {
-                                    sender: user_name.clone(),
-                                    timestamp: msg.timestamp.clone(),
-                                    content: msg_log.contents.clone()
-                                }
-                            }
-                        };
-
-                        for (_, receipient) in user_room.occupants.lock().unwrap().values() {
-                            receipient
-                                .unbounded_send(broadcast_msg.clone())
-                                .unwrap_or_else(|e| log::error!("{}", e))
-                        }
-                    }
-                }
+                message_inbound(room_map.clone(), user.clone(), user_name.clone(), msg).await;
             }
 
             msg_to_usr = user_inbox.next() => {
