@@ -84,7 +84,7 @@ pub async fn handle_initial_connection(stream: TcpStream) -> SplitSocket {
     }
 }
 
-pub fn failed_login_response(mut socket_sink: SplitSink<WebSocketStream<TcpStream>, Message>) {
+pub fn on_login_failed(mut socket_sink: SplitSink<WebSocketStream<TcpStream>, Message>) {
     tokio::spawn(async move {
         let login_fail = ServerMsg {
             status: Status::JustNo,
@@ -100,7 +100,7 @@ pub fn failed_login_response(mut socket_sink: SplitSink<WebSocketStream<TcpStrea
     });
 }
 
-pub async fn successful_login_response(
+pub async fn on_login_success(
     user_id: String,
     server_public: PublicKey,
     mut socket: SplitSocket,
@@ -151,17 +151,17 @@ pub async fn handle_login_attempt(
                 user_public_key = PublicKey::from(client_public_key);
                 Ok((user_id, user_name, user_public_key, split_socket))
             } else {
-                failed_login_response(split_socket.sink);
+                on_login_failed(split_socket.sink);
                 Err(MarainError::LoginFail(
                     "Login failed: Could not deserialize login message".to_string(),
                 ))
             }
         } else {
-            failed_login_response(split_socket.sink);
+            on_login_failed(split_socket.sink);
             Err(MarainError::LoginFail(format!("Login failed: Incorrect message format from client. Expected Message::Binary. Got: {login_msg:?}")))
         }
     } else {
-        failed_login_response(split_socket.sink);
+        on_login_failed(split_socket.sink);
         Err(MarainError::LoginFail(format!(
             "Login failed: Downstream connection closed unexpectedly."
         )))
@@ -246,7 +246,7 @@ pub async fn login_handshake(
     );
 
     let split_socket =
-        successful_login_response(user_id.clone(), server_public.clone(), split_socket).await?;
+        on_login_success(user_id.clone(), server_public.clone(), split_socket).await?;
 
     Ok(LoginSuccess {
         user,

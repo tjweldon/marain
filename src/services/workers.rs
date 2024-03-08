@@ -7,7 +7,7 @@ use crate::{
     domain::{types::LockedRoomMap, user::User},
     handlers::{
         commands::{command_handler, Commands},
-        initial_login::SplitSocket,
+        login::SplitSocket,
         messages::global_message_handler,
         recv_routing::recv_routing_handler,
         rooms::room_handler,

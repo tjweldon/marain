@@ -2,7 +2,7 @@ extern crate marain_server;
 
 use env_logger;
 use marain_server::{
-    handlers::initial_login::{
+    handlers::login::{
         handle_initial_connection, login_handshake, setup_listener, setup_rooms,
     },
     services::workers::spawn_workers,
