@@ -5,11 +5,12 @@ use futures_channel::mpsc::{UnboundedReceiver, UnboundedSender};
 use futures_util::StreamExt;
 use marain_api::prelude::Timestamp;
 
-use crate::domain::{chat_log::MessageLog, user::User};
 
 use super::{
     commands::{Command, CommandPayload},
     events::Event,
+    user::User,
+    chat_log::MessageLog,
 };
 
 use anyhow::{anyhow, Result};
@@ -132,6 +133,25 @@ impl AppState {
             ))
         }
     }
+
+    fn record_chat_message(&mut self, user: &User, msg: MessageLog) -> &[User] {
+        for (room, occupants) in &self.occupancy {
+            if occupants.contains(user) {
+                self.chat_logs
+                    .entry(room.clone())
+                    .and_modify(|logs| {
+                        logs.push_back(msg.clone());
+                        if logs.len() > self.max_logs {
+                            logs.pop_front();
+                        }
+                    })
+                    .or_insert(vec![msg].into());
+                return occupants;
+            }
+        }
+
+        return &[];
+    }
 }
 
 struct CommandHandler {
@@ -175,23 +195,15 @@ impl CommandHandler {
                 user,
                 payload:
                     CommandPayload::RecordMessage {
-                        target_room,
                         message,
                     },
             } => {
-                let logs = self.state.chat_logs.get_mut(&target_room).unwrap();
-                let msg_log = MessageLog {
-                    username: user.name,
-                    timestamp: Utc::now(),
-                    contents: message,
-                };
-                logs.push_back(msg_log.clone());
-                if logs.len() < self.state.max_logs {
-                    logs.pop_front();
-                }
+                let msg_log = MessageLog::from_user(&user, message);
+                let recipients: Vec<User> = Vec::from(self.state.record_chat_message(&user, msg_log.clone()));
+                
                 let br = Broadcast::new(
                     Event::MsgReceived { msg: msg_log },
-                    self.state.room_subscribers(&target_room),
+                    recipients,
                 );
                 event_buf.push_back(br);
                 Ok(())

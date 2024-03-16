@@ -1,5 +1,4 @@
-use super::app::Room;
-use crate::domain::{chat_log::MessageLog, user::User};
+use super::{app::Room, user::User, chat_log::MessageLog};
 
 #[derive(Clone)]
 pub enum Event {

@@ -37,6 +37,18 @@ pub fn create_key_pair() -> (EphemeralSecret, PublicKey) {
 
     (server_secret, server_public)
 }
+pub async fn setup_listener() -> TcpListener {
+    let mut port = getenv("MARAIN_PORT");
+    if port.len() == 0 {
+        port = "8080".to_string();
+        log::warn!("Could not find MARAIN_PORT environment variable. Falling back to 8080.");
+    }
+    let addr = format!("0.0.0.0:{}", port);
+    let try_socket = TcpListener::bind(&addr).await;
+    let listener = try_socket.expect("Failed to bind");
+    info!("Listening on: {}", addr);
+    listener
+}
 
 pub fn setup_rooms() -> (LockedRoomMap, u64) {
     let rooms = LockedRoomMap::new(Mutex::new(HashMap::new()));
@@ -54,18 +66,6 @@ pub fn setup_rooms() -> (LockedRoomMap, u64) {
     (rooms, global_room_hash)
 }
 
-pub async fn setup_listener() -> TcpListener {
-    let mut port = getenv("MARAIN_PORT");
-    if port.len() == 0 {
-        port = "8080".to_string();
-        log::warn!("Could not find MARAIN_PORT environment variable. Falling back to 8080.");
-    }
-    let addr = format!("0.0.0.0:{}", port);
-    let try_socket = TcpListener::bind(&addr).await;
-    let listener = try_socket.expect("Failed to bind");
-    info!("Listening on: {}", addr);
-    listener
-}
 
 pub struct SplitSocket {
     pub sink: SplitSink<WebSocketStream<TcpStream>, Message>,

@@ -3,5 +3,8 @@ mod app_gateway;
 mod commands;
 mod events;
 mod message_builder;
+mod user;
+mod login;
+mod chat_log;
 pub mod user_session;
 pub mod workers;

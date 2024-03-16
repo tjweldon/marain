@@ -4,12 +4,12 @@ use chrono::Utc;
 use futures_channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures_util::stream::SplitStream;
 use futures_util::{stream::SplitSink, SinkExt, StreamExt};
-use marain_api::prelude::{ClientMsg, ClientMsgBody, MarainError, Timestamp};
+use marain_api::prelude::{ClientMsg, ClientMsgBody, Timestamp};
 use sphinx::prelude::cbc_decode;
 use tokio::net::TcpStream;
 use tokio_tungstenite::{tungstenite::Message, WebSocketStream};
 
-use crate::domain::user::User;
+use super::user::User;
 
 use super::app::Room;
 use super::commands::{Command, CommandPayload};
@@ -42,9 +42,8 @@ impl SessionBus {
     }
 }
 
-struct SessionWorker {
+pub struct SessionWorker {
     user: User,
-    target_room: Room,
     app_socket: SessionBus,
     user_sink: SplitSink<WebSocketStream<TcpStream>, Message>,
     user_source: SplitStream<WebSocketStream<TcpStream>>,
@@ -53,31 +52,29 @@ struct SessionWorker {
 }
 
 impl SessionWorker {
-    fn new(
+    pub fn new(
         user: User,
         gateway_sink: UnboundedSender<Command>,
         user_sink: SplitSink<WebSocketStream<TcpStream>, Message>,
         user_source: SplitStream<WebSocketStream<TcpStream>>,
-        shared_secret: [u8; 32],
     ) -> Self {
         SessionWorker {
-            user,
-            target_room: Room::default(),
+            user: user.clone(),
             app_socket: SessionBus::new(gateway_sink),
             user_sink,
             user_source,
             staged_messages: VecDeque::new(),
-            shared_secret,
+            shared_secret: user.shared_secret.clone(),
         }
     }
 
-    fn give_sink(&mut self) -> Result<UnboundedSender<Event>, MarainError> {
+    fn give_sink(&mut self) -> Result<UnboundedSender<Event>> {
         if let Some(s) = self.app_socket.event_sink.clone() {
             self.app_socket.event_sink = None;
             Ok(s)
         } else {
-            Err(MarainError::LoginFail(
-                "Failure in SessionWorker.give_sinks(). One of the sinks is not present.".into(),
+            Err(anyhow!(
+                "Failure in SessionWorker.give_sinks(). One of the sinks is not present.",
             ))
         }
     }
@@ -111,7 +108,6 @@ impl SessionWorker {
                 ClientMsgBody::SendToRoom { contents: message } => Ok(Command {
                     user: self.user.clone(),
                     payload: CommandPayload::RecordMessage {
-                        target_room: self.target_room.clone(),
                         message,
                     },
                 }),
@@ -169,9 +165,6 @@ impl SessionWorker {
                 Ok(())
             }
             Event::UserJoined { user, room } => {
-                if self.user == user {
-                    self.target_room = room.clone()
-                }
                 let m = format!("{} joined {}.", user.name, room.name)
                     .as_bytes()
                     .to_vec();
@@ -181,29 +174,26 @@ impl SessionWorker {
         }
     }
 
-    async fn run(&mut self) {
-        if let Ok(register) = match self.give_sink() {
-            Ok(event_sink) => Ok(Command {
-                user: self.user.clone(),
-                payload: CommandPayload::RegisterUser(event_sink),
-            }),
-            Err(e) => Err(anyhow!("{e:?}")),
-        } {
-            self.app_socket.send_command(register)
-        } else {
-            log::error!("Failed to retrieve event sink. Returning");
-            return;
+    pub async fn run(&mut self) -> Result<()> {
+        let event_sink = self.give_sink()?;
+        let register = Command {
+            user: self.user.clone(),
+            payload: CommandPayload::RegisterUser(event_sink),
         };
-
+        
+        self.app_socket.send_command(register);
+        
         loop {
             tokio::select! {
                 Some(msg) = self.user_source.next() => {
-
                     let msg_bytes = match msg {
                         Ok(Message::Binary(data)) => data,
                         Err(e) => {
                             log::error!("Invalid protocol: {e}");
                             continue;
+                        },
+                        Ok(Message::Close {..}) => {
+                            return Ok(());
                         },
                         _ => {
                             log::warn!("Unexpected message encoding");

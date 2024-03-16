@@ -5,8 +5,7 @@ use marain_api::prelude::{ChatMsg, ServerMsg, ServerMsgBody, Status, Timestamp};
 use sphinx::prelude::{cbc_encode, get_rng};
 use tokio_tungstenite::tungstenite::Message;
 
-use crate::domain::chat_log::MessageLog;
-use crate::domain::user::User;
+use super::{user::User, chat_log::MessageLog};
 
 use anyhow::{anyhow, Result};
 

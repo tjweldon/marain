@@ -1,9 +1,7 @@
 use futures_channel::mpsc::UnboundedSender;
 use marain_api::prelude::{ServerMsg, Timestamp};
 
-use crate::domain::user::User;
-
-use super::{app::Room, events::Event};
+use super::{app::Room, events::Event, user::User};
 
 #[derive(Debug, Clone)]
 pub struct Command {
@@ -16,7 +14,7 @@ pub enum CommandPayload {
     RegisterUser(UnboundedSender<Event>),
     DropUser,
     MoveUser { target_room: Room },
-    RecordMessage { target_room: Room, message: String },
+    RecordMessage { message: String },
     GetRecipients,
     Time(Timestamp),
 }

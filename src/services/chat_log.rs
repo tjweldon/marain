@@ -3,7 +3,7 @@ use std::fmt::Display;
 use chrono::{DateTime, Utc};
 use marain_api::prelude::{ClientMsg, ClientMsgBody};
 
-use crate::domain::user::User;
+use super::user::User;
 
 #[derive(Debug, Clone)]
 pub struct MessageLog {
