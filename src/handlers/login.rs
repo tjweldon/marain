@@ -47,6 +47,8 @@ pub fn setup_rooms() -> (LockedRoomMap, u64) {
         Room::new(
             Arc::new(Mutex::new(HashMap::new())),
             Arc::new(Mutex::new(VecDeque::new())),
+            "hub".into(),
+            global_room_hash,
         ),
     );
     (rooms, global_room_hash)
@@ -219,7 +221,7 @@ pub fn setup_user(
     (user, user_inbox)
 }
 
-pub struct LoginSuccess {
+pub struct UserSession {
     pub user: Arc<Mutex<User>>,
     pub user_inbox: UnboundedReceiver<ServerMsg>,
     pub rooms: LockedRoomMap,
@@ -230,7 +232,7 @@ pub async fn login_handshake(
     global_room_hash: u64,
     rooms: LockedRoomMap,
     socket: SplitSocket,
-) -> Result<LoginSuccess, MarainError> {
+) -> Result<UserSession, MarainError> {
     let (user_id, user_name, user_public_key, split_socket) = handle_login_attempt(socket).await?;
 
     // Generate a key pair for the server
@@ -248,7 +250,7 @@ pub async fn login_handshake(
     let split_socket =
         on_login_success(user_id.clone(), server_public.clone(), split_socket).await?;
 
-    Ok(LoginSuccess {
+    Ok(UserSession {
         user,
         user_inbox,
         rooms,

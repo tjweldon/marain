@@ -13,13 +13,22 @@ const LOG_MAX_ENTRIES: usize = 25;
 pub struct Room {
     pub occupants: LockedPeerMap,
     pub chat_log: Arc<Mutex<VecDeque<MessageLog>>>,
+    pub name: String,
+    pub id: u64,
 }
 
 impl Room {
-    pub fn new(occupants: LockedPeerMap, chat_log: Arc<Mutex<VecDeque<MessageLog>>>) -> Self {
+    pub fn new(
+        occupants: LockedPeerMap,
+        chat_log: Arc<Mutex<VecDeque<MessageLog>>>,
+        name: String,
+        id: u64,
+    ) -> Self {
         Room {
             occupants,
             chat_log,
+            name,
+            id,
         }
     }
 
@@ -53,6 +62,31 @@ impl Room {
             })
             .collect()
     }
+
+    pub fn contains_user_with_id(&self, user_id: &str) -> bool {
+        let occupants = self.occupants.lock().unwrap();
+        occupants
+            .keys()
+            .filter(
+                |&candidate_id| {
+                    if user_id == candidate_id {
+                        true
+                    } else {
+                        false
+                    }
+                },
+            )
+            .count()
+            > 0
+    }
+
+    pub fn remove_if_present(&mut self, user_id: &str) -> bool {
+        if self.contains_user_with_id(user_id) {
+            self.occupants.lock().unwrap().remove(user_id).is_some()
+        } else {
+            false
+        }
+    }
 }
 
 impl Default for Room {
@@ -60,6 +94,8 @@ impl Default for Room {
         Room::new(
             Arc::new(Mutex::new(HashMap::new())),
             Arc::new(Mutex::new(VecDeque::new())),
+            "".into(),
+            0,
         )
     }
 }

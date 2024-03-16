@@ -47,6 +47,8 @@ pub async fn room_handler(
                         Room::new(
                             Arc::new(Mutex::new(HashMap::new())),
                             Arc::new(Mutex::new(VecDeque::new())),
+                            target,
+                            room_hash,
                         ),
                     );
                     match created {

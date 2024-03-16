@@ -49,7 +49,7 @@ pub fn spawn_workers(
     // spawn workers
     tokio::spawn(recv_routing_handler(
         socket.source,
-        user.clone(),
+        user.lock().unwrap().clone(),
         cmd_sink,
         msg_sink,
         rooms.clone(),

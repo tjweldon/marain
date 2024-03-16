@@ -21,7 +21,7 @@ fn encrypt(key: &[u8; 32], data: Vec<u8>) -> Option<Vec<u8>> {
     }
 }
 
-async fn message_inbound(
+async fn room_message_fanout(
     room_map: LockedRoomMap,
     user: Arc<Mutex<User>>,
     user_name: String,
@@ -94,7 +94,7 @@ pub async fn global_message_handler(
                     continue 'main_loop;
                 }
 
-                message_inbound(room_map.clone(), user.clone(), user_name.clone(), msg).await;
+                room_message_fanout(room_map.clone(), user.clone(), user_name.clone(), msg).await;
             }
 
             msg_to_usr = user_inbox.next() => {

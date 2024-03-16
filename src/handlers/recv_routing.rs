@@ -8,7 +8,7 @@ use sphinx::prelude::cbc_decode;
 use tokio::net::TcpStream;
 use tokio_tungstenite::{tungstenite::Message, WebSocketStream};
 
-use crate::domain::{room::Room, types::LockedRoomMap, user::User};
+use crate::domain::{types::LockedRoomMap, user::User};
 
 use super::commands::Commands;
 
@@ -34,12 +34,12 @@ fn deserialize(msg: Vec<u8>) -> Option<ClientMsg> {
 
 pub async fn recv_routing_handler(
     ws_source: SplitStream<WebSocketStream<TcpStream>>,
-    user: Arc<Mutex<User>>,
+    user: User,
     command_pipe: UnboundedSender<Commands>,
     message_pipe: UnboundedSender<ClientMsg>,
     room_map: LockedRoomMap,
 ) {
-    let user_key = user.lock().unwrap().shared_secret;
+    let user_key = user.shared_secret;
     _ = ws_source
         .for_each(|msg_maybe| {
             match msg_maybe {
@@ -115,15 +115,10 @@ pub async fn recv_routing_handler(
 
 fn remove_user(
     room_map: Arc<Mutex<std::collections::HashMap<u64, crate::domain::room::Room>>>,
-    user: Arc<Mutex<User>>,
+    user: User,
 ) {
-    let rooms = room_map.lock().unwrap();
-    let empty = Room::default();
-    let mut members = rooms
-        .get(&user.lock().unwrap().room)
-        .unwrap_or(&empty)
-        .occupants
-        .lock()
-        .expect("Something else broke. ‾\\(`>`)/‾");
-    members.remove(&user.lock().unwrap().id);
+    let mut rooms = room_map.lock().unwrap();
+    for room in rooms.values_mut() {
+        room.remove_if_present(&user.id);
+    }
 }
