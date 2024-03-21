@@ -1,5 +1,3 @@
-use x25519_dalek::PublicKey;
-
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct User {
     pub id: String,
@@ -8,11 +6,7 @@ pub struct User {
 }
 
 impl User {
-    pub fn new(
-        id: String,
-        name: String,
-        shared_secret: [u8; 32],
-    ) -> Self {
+    pub fn new(id: String, name: String, shared_secret: [u8; 32]) -> Self {
         User {
             id,
             name,

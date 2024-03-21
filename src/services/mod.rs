@@ -1,10 +1,9 @@
-mod app;
-mod app_gateway;
-mod commands;
+pub mod app;
+pub mod app_gateway;
+mod chat_log;
+pub mod commands;
 mod events;
+pub mod login;
 mod message_builder;
 mod user;
-mod login;
-mod chat_log;
 pub mod user_session;
-pub mod workers;

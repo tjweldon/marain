@@ -5,7 +5,7 @@ use marain_api::prelude::{ChatMsg, ServerMsg, ServerMsgBody, Status, Timestamp};
 use sphinx::prelude::{cbc_encode, get_rng};
 use tokio_tungstenite::tungstenite::Message;
 
-use super::{user::User, chat_log::MessageLog};
+use super::{app::Room, chat_log::MessageLog, user::User};
 
 use anyhow::{anyhow, Result};
 
@@ -26,7 +26,7 @@ impl SocketSendAdaptor {
         Ok(serialized)
     }
 
-    fn encrypt_message(key: &[u8; 32], data: Vec<u8>) -> Result<Message> {
+    pub fn encrypt_message(key: &[u8; 32], data: Vec<u8>) -> Result<Message> {
         let rng = get_rng();
         match cbc_encode(key.to_vec(), data, rng) {
             Ok(enc) => Ok(Message::Binary(enc)),
@@ -53,6 +53,24 @@ impl SocketSendAdaptor {
         let encrypted = SocketSendAdaptor::encrypt_message(key, serialized)?;
         Ok(encrypted)
     }
+
+    pub fn room_data_response(
+        key: &[u8; 32],
+        chat_logs: Vec<MessageLog>,
+        occupants: Vec<String>,
+    ) -> Result<Message> {
+        let server_msg = ServerMsgFactory::build_room_data(chat_logs, occupants);
+        let serialized = SocketSendAdaptor::serialized_server_msg(server_msg)?;
+        let encrypted = SocketSendAdaptor::encrypt_message(key, serialized)?;
+        Ok(encrypted)
+    }
+
+    pub fn user_left_room_response(key: &[u8; 32], user: &User, room: &Room) -> Result<Message> {
+        let server_msg = ServerMsgFactory::build_user_left(user, room);
+        let serialized = SocketSendAdaptor::serialized_server_msg(server_msg)?;
+        let encrypted = SocketSendAdaptor::encrypt_message(key, serialized)?;
+        Ok(encrypted)
+    }
 }
 
 pub struct ServerMsgFactory;
@@ -63,6 +81,34 @@ impl ServerMsgFactory {
             status: Status::Yes,
             timestamp: Timestamp::from(Utc::now()),
             body: ServerMsgBody::LoginSuccess { token, public_key },
+        }
+    }
+
+    fn build_user_left(user: &User, room: &Room) -> ServerMsg {
+        let body = format!("{} left {}", user.name, room.name);
+        ServerMsg {
+            status: Status::Yes,
+            timestamp: Timestamp::from(Utc::now()),
+            body: ServerMsgBody::Notification { body },
+        }
+    }
+
+    fn build_room_data(chat_logs: Vec<MessageLog>, occupants: Vec<String>) -> ServerMsg {
+        ServerMsg {
+            status: Status::Yes,
+            timestamp: Timestamp::from(Utc::now()),
+            body: ServerMsgBody::RoomData {
+                query_ts: Timestamp::from(Utc::now()),
+                logs: chat_logs
+                    .iter()
+                    .map(|ml| ChatMsg {
+                        sender: ml.username.clone(),
+                        timestamp: Timestamp::from(ml.timestamp),
+                        content: ml.contents.clone(),
+                    })
+                    .collect(),
+                occupants,
+            },
         }
     }
 

@@ -549,6 +549,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "lazy_static"
+version = "1.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
+
+[[package]]
 name = "libc"
 version = "0.2.153"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -573,7 +579,7 @@ checksum = "90ed8c1e510134f979dbc4f070f87d4313098b704861a105fe34231c70a3901c"
 [[package]]
 name = "marain-api"
 version = "0.1.0"
-source = "git+https://github.com/tjweldon/marain-api.git?rev=refs/heads/main#4c0a9c575a2e1a4651782d02331e2f6e11651562"
+source = "git+https://github.com/tjweldon/marain-api.git?rev=refs/heads/main#2dc3b9919e4a241260a0485d087a1e4cadd7cacc"
 dependencies = [
  "chrono",
  "serde",
@@ -590,6 +596,7 @@ dependencies = [
  "env_logger",
  "futures-channel",
  "futures-util",
+ "lazy_static",
  "log",
  "marain-api",
  "rand_core",

@@ -14,11 +14,13 @@ use tokio_tungstenite::{tungstenite::Message, WebSocketStream};
 
 use anyhow::{anyhow, Result};
 use uuid::Uuid;
-use x25519_dalek::{EphemeralSecret, PublicKey};
+use x25519_dalek::{PublicKey, ReusableSecret};
 
 use super::{
     commands::Command, message_builder::SocketSendAdaptor, user::User, user_session::SessionWorker,
 };
+
+type KeyPair = (ReusableSecret, PublicKey);
 
 pub fn getenv(name: &str) -> String {
     match std::env::var(name) {
@@ -27,11 +29,12 @@ pub fn getenv(name: &str) -> String {
     }
 }
 
-pub fn create_key_pair() -> (EphemeralSecret, PublicKey) {
-    let server_secret = EphemeralSecret::random_from_rng(OsRng);
-    let server_public = PublicKey::from(&server_secret);
+pub fn create_key_pair() -> (ReusableSecret, PublicKey) {
+    let ss = ReusableSecret::random_from_rng(OsRng);
+    // let server_secret = EphemeralSecret::random_from_rng(OsRng);
+    let server_public = PublicKey::from(&ss);
 
-    (server_secret, server_public)
+    (ss, server_public)
 }
 pub async fn setup_listener() -> TcpListener {
     let mut port = getenv("MARAIN_PORT");
@@ -112,7 +115,7 @@ pub async fn handle_login_attempt(
     socket_sink: SplitSink<WebSocketStream<TcpStream>, Message>,
     socket_source: SplitStream<WebSocketStream<TcpStream>>,
     gateway_sink: UnboundedSender<Command>,
-    server_secret: EphemeralSecret,
+    server_secret: ReusableSecret,
     server_public_key: PublicKey,
 ) -> Result<SessionWorker> {
     // Deserialise the initial login message from a client.
@@ -150,7 +153,7 @@ pub async fn handle_login_attempt(
 pub async fn handle_client_initiation(
     mut socket_source: SplitStream<WebSocketStream<TcpStream>>,
     sink: SplitSink<WebSocketStream<TcpStream>, Message>,
-    server_secret: EphemeralSecret,
+    server_secret: ReusableSecret,
     server_public_key: PublicKey,
     gateway_sink: UnboundedSender<Command>,
 ) -> Result<SessionWorker> {
@@ -186,17 +189,22 @@ pub async fn handle_client_initiation(
 pub async fn login_handshake(
     socket: SplitSocket,
     gateway_sink: UnboundedSender<Command>,
+    key_pair: KeyPair,
 ) -> Result<SessionWorker> {
     // Generate a key pair for the server
-    let (server_secret, server_public) = create_key_pair();
+    let (server_secret, server_public) = key_pair;
     let SplitSocket { sink, source } = socket;
 
     handle_client_initiation(source, sink, server_secret, server_public, gateway_sink).await
 }
 
-pub async fn spawn_user_session(stream: TcpStream, gateway_sink: UnboundedSender<Command>) -> Result<()>{
+pub async fn spawn_user_session(
+    stream: TcpStream,
+    gateway_sink: UnboundedSender<Command>,
+    key_pair: KeyPair,
+) -> Result<()> {
     let split_socket = handle_initial_connection(stream).await;
-    let mut user_session = login_handshake(split_socket, gateway_sink).await?;
+    let mut user_session = login_handshake(split_socket, gateway_sink, key_pair).await?;
     tokio::spawn(async move {
         if let Err(e) = user_session.run().await {
             log::error!("User session quit unexpectedly with error: {e}");

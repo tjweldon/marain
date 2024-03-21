@@ -1,5 +1,3 @@
-use std::collections::VecDeque;
-
 use chrono::Utc;
 use futures_channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures_util::stream::SplitStream;
@@ -47,7 +45,6 @@ pub struct SessionWorker {
     app_socket: SessionBus,
     user_sink: SplitSink<WebSocketStream<TcpStream>, Message>,
     user_source: SplitStream<WebSocketStream<TcpStream>>,
-    staged_messages: VecDeque<ClientMsg>,
     shared_secret: [u8; 32],
 }
 
@@ -63,7 +60,6 @@ impl SessionWorker {
             app_socket: SessionBus::new(gateway_sink),
             user_sink,
             user_source,
-            staged_messages: VecDeque::new(),
             shared_secret: user.shared_secret.clone(),
         }
     }
@@ -96,20 +92,9 @@ impl SessionWorker {
     fn parse_command(&mut self, msg: ClientMsg) -> Result<Command> {
         match msg {
             ClientMsg { body, .. } => match body {
-                // ClientMsgBody::Login(name, client_public_key) => match self.give_sink() {
-                //     Ok(event_sink) => Ok(Command {
-                //         user: self.user.clone(),
-                //         payload: CommandPayload::RegisterUser(event_sink, client_public_key),
-                //     }),
-                //     Err(e) => {
-                //         return Err(anyhow!("Error: {e:?} in parse_command"));
-                //     }
-                // },
                 ClientMsgBody::SendToRoom { contents: message } => Ok(Command {
                     user: self.user.clone(),
-                    payload: CommandPayload::RecordMessage {
-                        message,
-                    },
+                    payload: CommandPayload::RecordMessage { message },
                 }),
                 ClientMsgBody::Move { target } => Ok(Command {
                     user: self.user.clone(),
@@ -158,17 +143,29 @@ impl SessionWorker {
                 Ok(())
             }
             Event::UserLeft { user, room } => {
-                let m = format!("{} left {}.", user.name, room.name)
-                    .as_bytes()
-                    .to_vec();
-                self.user_sink.send(Message::Binary(m)).await?;
+                // let m = format!("{} left {}.", user.name, room.name)
+                //     .as_bytes()
+                //     .to_vec();
+                let msg =
+                    SocketSendAdaptor::user_left_room_response(&self.shared_secret, &user, &room)?;
+                self.user_sink.send(msg).await?;
                 Ok(())
             }
-            Event::UserJoined { user, room } => {
-                let m = format!("{} joined {}.", user.name, room.name)
-                    .as_bytes()
-                    .to_vec();
-                self.user_sink.send(Message::Binary(m)).await?;
+            Event::UserJoined {
+                msg_log,
+                occupant_names,
+                ..
+            } => {
+                // let m = format!("{} joined {}.", user.name, room.name)
+                //     .as_bytes()
+                //     .to_vec();
+
+                let msg = SocketSendAdaptor::room_data_response(
+                    &self.shared_secret,
+                    msg_log,
+                    occupant_names,
+                )?;
+                self.user_sink.send(msg).await?;
                 Ok(())
             }
         }
@@ -180,9 +177,9 @@ impl SessionWorker {
             user: self.user.clone(),
             payload: CommandPayload::RegisterUser(event_sink),
         };
-        
+
         self.app_socket.send_command(register);
-        
+
         loop {
             tokio::select! {
                 Some(msg) = self.user_source.next() => {

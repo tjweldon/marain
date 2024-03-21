@@ -1,5 +1,5 @@
 use futures_channel::mpsc::UnboundedSender;
-use marain_api::prelude::{ServerMsg, Timestamp};
+use marain_api::prelude::Timestamp;
 
 use super::{app::Room, events::Event, user::User};
 
