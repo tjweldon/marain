@@ -1,40 +1,50 @@
 extern crate marain_server;
 
 use env_logger;
-use marain_server::{
-    handlers::login::{
-        handle_initial_connection, login_handshake, setup_listener, setup_rooms,
-    },
-    services::workers::spawn_workers,
+use futures_channel::mpsc::unbounded;
+use marain_server::services::{
+    app::App,
+    app_gateway::AppGateway,
+    commands::Command,
+    login::{create_key_pair, setup_listener, spawn_user_session},
 };
-
 use tokio_tungstenite::tungstenite::Result;
+use x25519_dalek::{PublicKey, ReusableSecret};
+#[macro_use]
+extern crate lazy_static;
+
+lazy_static! {
+    pub static ref KEY_PAIR: (ReusableSecret, PublicKey) = create_key_pair();
+    pub static ref SECRET_KEY: ReusableSecret = KEY_PAIR.0.clone();
+    pub static ref PUBLIC_KEY: PublicKey = KEY_PAIR.1;
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let _ = env_logger::try_init();
-    let (rooms, global_room_hash) = setup_rooms();
+    let (app_sink, gateway_source) = unbounded::<Command>();
+    let (session_sink, session_worker_source) = unbounded::<Command>();
+    let app_gateway = AppGateway::init(app_sink, session_worker_source);
 
-    // Create the event loop and TCP listener we'll accept connections on.
+    let app = App::init(gateway_source);
+    app.run();
+    app_gateway.run();
     let listener = setup_listener().await;
-
+    // Create the event loop and TCP listener we'll accept connections on.
     while let Ok((stream, _)) = listener.accept().await {
-        let split_socket = handle_initial_connection(stream).await;
-
-        let success = match login_handshake(global_room_hash, rooms.clone(), split_socket).await {
-            Ok(ls) => ls,
+        match spawn_user_session(
+            stream,
+            session_sink.clone(),
+            (SECRET_KEY.clone(), *PUBLIC_KEY),
+        )
+        .await
+        {
             Err(e) => {
-                log::info!("{e:?}");
+                log::error!("Could not spawn user_session due to error: {e}");
                 continue;
             }
+            _ => {}
         };
-
-        spawn_workers(
-            success.user.clone(),
-            success.user_inbox,
-            success.rooms.clone(),
-            success.socket,
-        )
     }
 
     Ok(())

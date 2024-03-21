@@ -1,0 +1,323 @@
+use std::collections::{HashMap, VecDeque};
+
+use futures_channel::mpsc::{UnboundedReceiver, UnboundedSender};
+use futures_util::StreamExt;
+
+use super::{
+    chat_log::MessageLog,
+    commands::{Command, CommandPayload},
+    events::Event,
+    user::User,
+};
+
+use anyhow::{anyhow, Result};
+
+struct EventBus {
+    subscribers: HashMap<User, UnboundedSender<Event>>,
+}
+
+impl EventBus {
+    fn new() -> Self {
+        Self {
+            subscribers: HashMap::new(),
+        }
+    }
+
+    pub fn publish(&mut self, broadcast: &Broadcast) {
+        for user in &broadcast.subscribers {
+            if let Some(channel) = self.subscribers.get(user) {
+                channel.unbounded_send(broadcast.event.clone()).unwrap();
+            }
+        }
+    }
+
+    pub fn subscribe(
+        &mut self,
+        user: User,
+        delivery_channel: UnboundedSender<Event>,
+    ) -> Result<()> {
+        match self.subscribers.insert(user, delivery_channel) {
+            Some(_) => Err(anyhow!("We got a double subscription chief")),
+            None => Ok(()),
+        }
+    }
+
+    pub fn unsubscribe(&mut self, user: User) -> Result<()> {
+        match self.subscribers.remove(&user) {
+            Some(_) => Ok(()),
+            None => Err(anyhow!(
+                "Tried to unsubscribe a user that was not subscribed."
+            )),
+        }
+    }
+}
+
+struct Broadcast {
+    event: Event,
+    subscribers: Vec<User>,
+}
+
+impl Broadcast {
+    fn new(event: Event, subscribers: Vec<User>) -> Self {
+        Self { event, subscribers }
+    }
+}
+
+#[derive(Debug, Hash, Clone, PartialEq, Eq)]
+pub struct Room {
+    pub name: String,
+}
+
+impl Default for Room {
+    fn default() -> Self {
+        Room::from("Hub")
+    }
+}
+
+impl From<&str> for Room {
+    fn from(value: &str) -> Self {
+        Self { name: value.into() }
+    }
+}
+
+struct AppState {
+    occupancy: HashMap<Room, Vec<User>>,
+    chat_logs: HashMap<Room, VecDeque<MessageLog>>,
+    max_logs: usize,
+}
+
+impl AppState {
+    fn new() -> Self {
+        Self {
+            occupancy: HashMap::from([(Room::from("Hub"), vec![])]),
+            chat_logs: HashMap::from([(Room::from("Hub"), VecDeque::new())]),
+            max_logs: 25,
+        }
+    }
+
+    fn room_subscribers(&self, room: &Room) -> Vec<User> {
+        self.occupancy.get(room).unwrap_or(&vec![]).clone()
+    }
+
+    fn room_chat_logs(&self, room: &Room) -> Vec<MessageLog> {
+        self.chat_logs
+            .get(&room)
+            .unwrap_or(&VecDeque::new())
+            .iter()
+            .map(|msg| msg.clone())
+            .collect()
+    }
+
+    fn occupant_names(&self, room: &Room) -> Vec<String> {
+        self.room_subscribers(&room)
+            .iter()
+            .map(|sub| sub.name.clone())
+            .collect()
+    }
+
+    fn add_user_to_room(&mut self, user: &User, room: &Room) {
+        self.occupancy
+            .entry(room.clone())
+            .and_modify(|members| members.push(user.clone()))
+            .or_insert(vec![user.clone()]);
+    }
+
+    fn get_occupied_room(&self, user: &User) -> Option<Room> {
+        for (room, occupants) in &self.occupancy {
+            if occupants.contains(&user) {
+                return Some(room.clone());
+            }
+        }
+        return None;
+    }
+
+    fn remove_user_from_room(&mut self, user: &User) {
+        let Some(room) = self.get_occupied_room(user) else {
+            log::warn!(
+                "Could not find user {user:?} in any room occpancy list when trying to remove"
+            );
+            return;
+        };
+
+        let Some(occupants) = self.occupancy.get_mut(&room) else {
+            log::warn!("Could not find occupants associated to a room when trying to remove.");
+            return;
+        };
+
+        let Some(index) = occupants.iter().position(|occupant| *occupant == *user) else {
+            log::warn!("Could not find index of user {user:?} in occupants when trying to remove.");
+            return;
+        };
+
+        occupants.swap_remove(index);
+    }
+
+    fn record_chat_message(&mut self, user: &User, msg: MessageLog) -> &[User] {
+        for (room, occupants) in &self.occupancy {
+            if occupants.contains(user) {
+                // log::info!("{}", room.name);
+                self.chat_logs
+                    .entry(room.clone())
+                    .and_modify(|logs| {
+                        logs.push_back(msg.clone());
+                        if logs.len() > self.max_logs {
+                            logs.pop_front();
+                        }
+                    })
+                    .or_insert(vec![msg].into());
+                return occupants;
+            }
+        }
+
+        return &[];
+    }
+}
+
+pub struct CommandHandler {
+    state: AppState,
+}
+
+impl CommandHandler {
+    fn new(state: AppState) -> Self {
+        Self { state }
+    }
+
+    fn handle(&mut self, command: Command, event_buf: &mut VecDeque<Broadcast>) -> Result<()> {
+        // Changed return from Result<Broadcast> -> Result<Vec<Broadcast>> -> Result<()>.
+        // This is because some Commands may produce multiple broadcasts,
+        // eg. MoveRoom should produce a UserLeft & UserJoined Broadcast for each event.
+        // Was creating an empty Vec<Broadcast> here but it seems wasteful,
+        // Decided to pass buffer instead?
+        // Still returning Result<()> for fault tolerance around publishing
+
+        match command {
+            Command {
+                user,
+                payload: CommandPayload::RegisterUser(..),
+            } => {
+                event_buf.push_back(self.register_user(user.clone()));
+                event_buf.push_back(self.insert_occupant(&user, &Room::from("Hub")));
+                Ok(())
+            }
+            Command {
+                user,
+                payload: CommandPayload::MoveUser { target_room },
+            } => {
+                match self.remove_occupant(&user) {
+                    Some(broadcast) => event_buf.push_back(broadcast),
+                    None => {
+                        log::error!("Failed to remove occupant: {user:?} in response to command.")
+                    }
+                }
+                event_buf.push_back(self.insert_occupant(&user, &target_room));
+                Ok(())
+            }
+            Command {
+                user,
+                payload: CommandPayload::RecordMessage { message },
+            } => {
+                let msg_log = MessageLog::from_user(&user, message);
+                let recipients: Vec<User> =
+                    Vec::from(self.state.record_chat_message(&user, msg_log.clone()));
+
+                let br = Broadcast::new(Event::MsgReceived { msg: msg_log }, recipients);
+                event_buf.push_back(br);
+                Ok(())
+            }
+
+            _ => Err(anyhow!("{command:?} not implemented in CommandHandler")),
+        }
+    }
+
+    fn register_user(&mut self, user: User) -> Broadcast {
+        Broadcast::new(
+            Event::UserRegistered {
+                token: user.id.clone(),
+            },
+            vec![user.clone()],
+        )
+    }
+
+    fn remove_occupant(&mut self, user: &User) -> Option<Broadcast> {
+        let Some(current_room) = self.state.get_occupied_room(user) else {
+            return None;
+        };
+        self.state.remove_user_from_room(user);
+        Some(Broadcast::new(
+            Event::UserLeft {
+                user: user.clone(),
+                room: current_room.clone(),
+            },
+            self.state.room_subscribers(&current_room),
+        ))
+    }
+
+    fn insert_occupant(&mut self, user: &User, room: &Room) -> Broadcast {
+        self.state.add_user_to_room(user, &room);
+
+        Broadcast::new(
+            Event::UserJoined {
+                user: user.clone(),
+                room: room.clone(),
+                msg_log: self.state.room_chat_logs(room),
+                occupant_names: self.state.occupant_names(room),
+            },
+            self.state.room_subscribers(&room),
+        )
+    }
+}
+
+pub struct App {
+    gateway_source: UnboundedReceiver<Command>,
+    command_handler: CommandHandler,
+    event_bus: EventBus,
+}
+
+impl App {
+    pub fn init(command_source: UnboundedReceiver<Command>) -> Self {
+        Self {
+            gateway_source: command_source,
+            command_handler: CommandHandler::new(AppState::new()),
+            event_bus: EventBus::new(),
+        }
+    }
+
+    pub fn run(mut self) {
+        tokio::spawn(async move {
+            match self.work().await {
+                Err(e) => panic!("App exited unexpectedly with error {e}"),
+                _ => (),
+            }
+        });
+    }
+
+    pub async fn work(&mut self) -> Result<()> {
+        // event buffer to limit re-allocation?
+        let mut event_buf: VecDeque<Broadcast> = VecDeque::new();
+        while let Some(command) = self.gateway_source.next().await {
+            match command.clone() {
+                Command {
+                    user,
+                    payload: CommandPayload::RegisterUser(delivery_channel, ..),
+                } => self.event_bus.subscribe(user, delivery_channel),
+                Command {
+                    user,
+                    payload: CommandPayload::DropUser,
+                } => self.event_bus.unsubscribe(user),
+                _ => Ok(()),
+            }?;
+            match self.command_handler.handle(command, &mut event_buf) {
+                Ok(_) => {
+                    while let Some(cast) = event_buf.pop_front() {
+                        self.event_bus.publish(&cast);
+                    }
+                }
+                Err(e) => {
+                    return Err(e);
+                }
+            }
+        }
+
+        Ok(())
+    }
+}

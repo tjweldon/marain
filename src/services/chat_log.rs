@@ -3,6 +3,8 @@ use std::fmt::Display;
 use chrono::{DateTime, Utc};
 use marain_api::prelude::{ClientMsg, ClientMsgBody};
 
+use super::user::User;
+
 #[derive(Debug, Clone)]
 pub struct MessageLog {
     pub username: String,
@@ -11,6 +13,14 @@ pub struct MessageLog {
 }
 
 impl MessageLog {
+    pub fn from_user(user: &User, text: String) -> Self {
+        Self {
+            username: user.name.clone(),
+            timestamp: Utc::now(),
+            contents: text,
+        }
+    }
+
     pub fn from_client_msg(client_msg: ClientMsg, username: &str) -> Option<Self> {
         match client_msg.body {
             ClientMsgBody::SendToRoom { contents } => Some(MessageLog {
