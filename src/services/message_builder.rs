@@ -1,11 +1,11 @@
 use chrono::Utc;
 
-use marain_api::prelude::{ChatMsg, ServerMsg, ServerMsgBody, Status, Timestamp};
+use marain_api::prelude::{ChatMsg, Notification, ServerMsg, ServerMsgBody, Status, Timestamp};
 
 use sphinx::prelude::{cbc_encode, get_rng};
 use tokio_tungstenite::tungstenite::Message;
 
-use super::{app::Room, chat_log::MessageLog, user::User};
+use super::{app::Room, chat_log::MessageLog, notification_log::NotificationLog, user::User};
 
 use anyhow::{anyhow, Result};
 
@@ -26,9 +26,9 @@ impl SocketSendAdaptor {
         Ok(serialized)
     }
 
-    pub fn encrypt_message(key: &[u8; 32], data: Vec<u8>) -> Result<Message> {
+    pub fn encrypt_message(key: &[u8; 32], serialized: Vec<u8>) -> Result<Message> {
         let rng = get_rng();
-        match cbc_encode(key.to_vec(), data, rng) {
+        match cbc_encode(key.to_vec(), serialized, rng) {
             Ok(enc) => Ok(Message::Binary(enc)),
             Err(e) => Err(anyhow!("{e:?}")),
         }
@@ -57,22 +57,12 @@ impl SocketSendAdaptor {
     pub fn room_data_response(
         key: &[u8; 32],
         chat_logs: Vec<MessageLog>,
+        notifications: Vec<NotificationLog>,
         occupants: Vec<String>,
         room: &Room,
     ) -> Result<Message> {
-        let server_msg = ServerMsgFactory::build_room_data(chat_logs, occupants, room);
-        let serialized = SocketSendAdaptor::serialized_server_msg(server_msg)?;
-        let encrypted = SocketSendAdaptor::encrypt_message(key, serialized)?;
-        Ok(encrypted)
-    }
-
-    pub fn user_left_room_response(
-        key: &[u8; 32],
-        room: &Room,
-        chat_logs: Vec<MessageLog>,
-        occupants: Vec<String>,
-    ) -> Result<Message> {
-        let server_msg = ServerMsgFactory::build_user_left(room, chat_logs, occupants);
+        let server_msg =
+            ServerMsgFactory::build_room_data(chat_logs, notifications, occupants, room);
         let serialized = SocketSendAdaptor::serialized_server_msg(server_msg)?;
         let encrypted = SocketSendAdaptor::encrypt_message(key, serialized)?;
         Ok(encrypted)
@@ -90,29 +80,9 @@ impl ServerMsgFactory {
         }
     }
 
-    fn build_user_left(
-        room: &Room,
-        chat_logs: Vec<MessageLog>,
-        occupants: Vec<String>,
-    ) -> ServerMsg {
-        ServerMsg {
-            status: Status::Yes,
-            timestamp: Timestamp::from(Utc::now()),
-            body: ServerMsgBody::RoomData {
-                room_name: room.name.clone(),
-                query_ts: Timestamp::from(Utc::now()),
-                logs: chat_logs.iter().map(|ml| ChatMsg {
-                    sender: ml.username.clone(),
-                    timestamp: Timestamp::from(ml.timestamp),
-                    content: ml.contents.clone(),
-                }).collect(),
-                occupants,
-            },
-        }
-    }
-
     fn build_room_data(
         chat_logs: Vec<MessageLog>,
+        notifications: Vec<NotificationLog>,
         occupants: Vec<String>,
         room: &Room,
     ) -> ServerMsg {
@@ -128,6 +98,14 @@ impl ServerMsgFactory {
                         sender: ml.username.clone(),
                         timestamp: Timestamp::from(ml.timestamp),
                         content: ml.contents.clone(),
+                    })
+                    .collect(),
+                notifications: notifications
+                    .iter()
+                    .map(|nl| Notification {
+                        sender: "SERVER".into(),
+                        timestamp: Timestamp::from(nl.timestamp),
+                        content: nl.contents.clone(),
                     })
                     .collect(),
                 occupants,

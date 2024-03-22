@@ -7,6 +7,7 @@ use super::{
     chat_log::MessageLog,
     commands::{Command, CommandPayload},
     events::Event,
+    notification_log::NotificationLog,
     user::User,
 };
 
@@ -83,14 +84,16 @@ impl From<&str> for Room {
 struct AppState {
     occupancy: HashMap<Room, Vec<User>>,
     chat_logs: HashMap<Room, VecDeque<MessageLog>>,
+    notifications: HashMap<Room, VecDeque<NotificationLog>>,
     max_logs: usize,
 }
 
 impl AppState {
     fn new() -> Self {
         Self {
-            occupancy: HashMap::from([(Room::from("Hub"), vec![])]),
-            chat_logs: HashMap::from([(Room::from("Hub"), VecDeque::new())]),
+            occupancy: HashMap::from([(Room::default(), vec![])]),
+            chat_logs: HashMap::from([(Room::default(), VecDeque::new())]),
+            notifications: HashMap::from([(Room::default(), VecDeque::new())]),
             max_logs: 25,
         }
     }
@@ -101,6 +104,15 @@ impl AppState {
 
     fn room_chat_logs(&self, room: &Room) -> Vec<MessageLog> {
         self.chat_logs
+            .get(&room)
+            .unwrap_or(&VecDeque::new())
+            .iter()
+            .map(|msg| msg.clone())
+            .collect()
+    }
+
+    fn room_notifications(&self, room: &Room) -> Vec<NotificationLog> {
+        self.notifications
             .get(&room)
             .unwrap_or(&VecDeque::new())
             .iter()
@@ -131,7 +143,7 @@ impl AppState {
         return None;
     }
 
-    fn remove_user_from_room(&mut self, user: &User) {
+    fn remove_user_from_room(&mut self, user: &User, notice: NotificationLog) {
         let Some(room) = self.get_occupied_room(user) else {
             log::warn!(
                 "Could not find user {user:?} in any room occpancy list when trying to remove"
@@ -150,6 +162,7 @@ impl AppState {
         };
 
         occupants.swap_remove(index);
+        self.record_notification(user, notice);
     }
 
     fn record_chat_message(&mut self, user: &User, msg: MessageLog) -> &[User] {
@@ -170,6 +183,22 @@ impl AppState {
         }
 
         return &[];
+    }
+
+    fn record_notification(&mut self, user: &User, notice: NotificationLog) {
+        for (room, occupants) in &self.occupancy {
+            if occupants.contains(user) {
+                self.notifications
+                    .entry(room.clone())
+                    .and_modify(|logs| {
+                        logs.push_back(notice.clone());
+                        if logs.len() > self.max_logs {
+                            logs.pop_front();
+                        }
+                    })
+                    .or_insert(vec![notice.clone()].into());
+            }
+        }
     }
 }
 
@@ -206,7 +235,9 @@ impl CommandHandler {
 
             CommandPayload::MoveUser { target_room } => {
                 match self.remove_occupant(&user) {
-                    Some(broadcast) => event_buf.push_back(broadcast),
+                    Some(broadcast) => {
+                        event_buf.push_back(broadcast);
+                    }
                     None => {
                         log::error!("Failed to remove occupant: {user:?} in response to command.")
                     }
@@ -242,6 +273,7 @@ impl CommandHandler {
                 user: user.clone(),
                 room: room.clone(),
                 msg_log: vec![],
+                notifications: vec![],
                 occupant_names: self.state.occupant_names(&room),
             },
             subscribers,
@@ -262,13 +294,15 @@ impl CommandHandler {
         let Some(current_room) = self.state.get_occupied_room(user) else {
             return None;
         };
-        self.state.remove_user_from_room(user);
+        let notice = NotificationLog::new(format!("{} left {}", user.name, current_room.name));
 
+        self.state.remove_user_from_room(user, notice);
         Some(Broadcast::new(
             Event::UserLeft {
                 user: user.clone(),
                 room: current_room.clone(),
                 occupant_names: self.state.occupant_names(&current_room),
+                notifications: self.state.room_notifications(&current_room),
                 msg_log: self.state.room_chat_logs(&current_room),
             },
             self.state.room_subscribers(&current_room),
@@ -277,12 +311,16 @@ impl CommandHandler {
 
     fn insert_occupant(&mut self, user: &User, room: &Room) -> Broadcast {
         self.state.add_user_to_room(user, &room);
-
+        self.state.record_notification(
+            user,
+            NotificationLog::new(format!("{} joined {}", user.name, room.name)),
+        );
         Broadcast::new(
             Event::UserJoined {
                 user: user.clone(),
                 room: room.clone(),
                 msg_log: self.state.room_chat_logs(room),
+                notifications: self.state.room_notifications(room),
                 occupant_names: self.state.occupant_names(room),
             },
             self.state.room_subscribers(&room),

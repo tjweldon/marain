@@ -1,4 +1,4 @@
-use super::{app::Room, chat_log::MessageLog, user::User};
+use super::{app::Room, chat_log::MessageLog, notification_log::NotificationLog, user::User};
 
 #[derive(Clone)]
 pub enum Event {
@@ -9,15 +9,20 @@ pub enum Event {
         user: User,
         room: Room,
         msg_log: Vec<MessageLog>,
+        notifications: Vec<NotificationLog>,
         occupant_names: Vec<String>,
     },
     UserLeft {
         user: User,
         room: Room,
         msg_log: Vec<MessageLog>,
+        notifications: Vec<NotificationLog>,
         occupant_names: Vec<String>,
     },
     MsgReceived {
         msg: MessageLog,
     },
+    // Notify {
+    //     notice: Vec<NotificationLog>,
+    // }
 }
