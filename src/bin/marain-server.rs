@@ -2,11 +2,13 @@ extern crate marain_server;
 
 use env_logger;
 use futures_channel::mpsc::unbounded;
-use marain_server::services::{
-    app::App,
-    app_gateway::AppGateway,
-    commands::Command,
-    login::{create_key_pair, setup_listener, spawn_user_session},
+use marain_server::{
+    domain::commands::Command,
+    services::{
+        app::App,
+        app_gateway::AppGateway,
+        login::{create_key_pair, setup_listener, spawn_user_session},
+    },
 };
 use tokio_tungstenite::tungstenite::Result;
 use x25519_dalek::{PublicKey, ReusableSecret};

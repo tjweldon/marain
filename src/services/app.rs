@@ -3,11 +3,12 @@ use std::collections::{HashMap, VecDeque};
 use futures_channel::mpsc::{UnboundedReceiver, UnboundedSender};
 use futures_util::StreamExt;
 
-use super::{
+use crate::domain::{
     chat_log::MessageLog,
     commands::{Command, CommandPayload},
     events::Event,
     notification_log::NotificationLog,
+    room::Room,
     user::User,
 };
 
@@ -61,23 +62,6 @@ struct Broadcast {
 impl Broadcast {
     fn new(event: Event, subscribers: Vec<User>) -> Self {
         Self { event, subscribers }
-    }
-}
-
-#[derive(Debug, Hash, Clone, PartialEq, Eq)]
-pub struct Room {
-    pub name: String,
-}
-
-impl Default for Room {
-    fn default() -> Self {
-        Room::from("Hub")
-    }
-}
-
-impl From<&str> for Room {
-    fn from(value: &str) -> Self {
-        Self { name: value.into() }
     }
 }
 

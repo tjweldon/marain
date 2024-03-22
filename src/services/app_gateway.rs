@@ -1,8 +1,9 @@
 use futures_channel::mpsc::{UnboundedReceiver, UnboundedSender};
 use futures_util::StreamExt;
 
-use super::commands::Command;
 use anyhow::{anyhow, Result};
+
+use crate::domain::commands::Command;
 
 pub struct AppGateway {
     command_handler_sink: UnboundedSender<Command>,

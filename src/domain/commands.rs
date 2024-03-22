@@ -1,7 +1,7 @@
 use futures_channel::mpsc::UnboundedSender;
 use marain_api::prelude::Timestamp;
 
-use super::{app::Room, events::Event, user::User};
+use super::{events::Event, room::Room, user::User};
 
 #[derive(Debug, Clone)]
 pub struct Command {

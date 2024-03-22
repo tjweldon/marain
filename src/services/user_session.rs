@@ -7,11 +7,11 @@ use sphinx::prelude::cbc_decode;
 use tokio::net::TcpStream;
 use tokio_tungstenite::{tungstenite::Message, WebSocketStream};
 
-use super::user::User;
+use crate::domain::commands::{Command, CommandPayload};
+use crate::domain::events::Event;
+use crate::domain::room::Room;
+use crate::domain::user::User;
 
-use super::app::Room;
-use super::commands::{Command, CommandPayload};
-use super::events::Event;
 use super::message_builder::SocketSendAdaptor;
 use anyhow::{anyhow, Result};
 

@@ -1,4 +1,6 @@
-use super::{app::Room, chat_log::MessageLog, notification_log::NotificationLog, user::User};
+// use super::{app::Room, chat_log::MessageLog, notification_log::NotificationLog, user::User};
+
+use super::{chat_log::MessageLog, notification_log::NotificationLog, room::Room, user::User};
 
 #[derive(Clone)]
 pub enum Event {

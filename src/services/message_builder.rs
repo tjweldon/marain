@@ -5,7 +5,9 @@ use marain_api::prelude::{ChatMsg, Notification, ServerMsg, ServerMsgBody, Statu
 use sphinx::prelude::{cbc_encode, get_rng};
 use tokio_tungstenite::tungstenite::Message;
 
-use super::{app::Room, chat_log::MessageLog, notification_log::NotificationLog, user::User};
+use crate::domain::{
+    chat_log::MessageLog, notification_log::NotificationLog, room::Room, user::User,
+};
 
 use anyhow::{anyhow, Result};
 
