@@ -142,14 +142,27 @@ impl SessionWorker {
                 self.user_sink.send(msg).await?;
                 Ok(())
             }
-            Event::UserLeft { room, occupant_names, msg_log, .. } => {
-                let msg =
-                    SocketSendAdaptor::user_left_room_response(&self.shared_secret, &room, msg_log, occupant_names)?;
+            Event::UserLeft {
+                room,
+                occupant_names,
+                notifications,
+                msg_log,
+                ..
+            } => {
+                let msg = SocketSendAdaptor::room_data_response(
+                    &self.shared_secret,
+                    msg_log,
+                    notifications,
+                    occupant_names,
+                    &room,
+                )?;
                 self.user_sink.send(msg).await?;
+
                 Ok(())
             }
             Event::UserJoined {
                 msg_log,
+                notifications,
                 occupant_names,
                 room,
                 ..
@@ -157,22 +170,29 @@ impl SessionWorker {
                 let msg = SocketSendAdaptor::room_data_response(
                     &self.shared_secret,
                     msg_log,
+                    notifications,
                     occupant_names,
                     &room,
                 )?;
                 self.user_sink.send(msg).await?;
+                // let msg =
+                //     SocketSendAdaptor::user_join_notification(&self.shared_secret, &user, &room)?;
+                // self.user_sink.send(msg).await?;
                 Ok(())
             }
         }
     }
 
     pub async fn end_session(&mut self) {
-        self.app_socket.send_command(Command {user: self.user.clone(), payload: CommandPayload::DropUser});
+        self.app_socket.send_command(Command {
+            user: self.user.clone(),
+            payload: CommandPayload::DropUser,
+        });
         loop {
             match self.app_socket.next_event().await {
                 Some(Event::UserLeft { user, .. }) if user == self.user => {
                     return;
-                },
+                }
                 _ => {
                     continue;
                 }
@@ -236,7 +256,7 @@ impl SessionWorker {
                     match self.handle_event(event).await {
                         Ok(_) => {},
                         Err(e) => {
-                            log::warn!("Error in SessionWorker event handler. Error: {e:?}"); 
+                            log::warn!("Error in SessionWorker event handler. Error: {e:?}");
                             break 'main_loop;
                         }
                     }
