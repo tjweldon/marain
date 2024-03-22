@@ -16,9 +16,9 @@ use anyhow::{anyhow, Result};
 use uuid::Uuid;
 use x25519_dalek::{PublicKey, ReusableSecret};
 
-use crate::domain::{commands::Command, user::User};
+use crate::{domain::{commands::Command, user::User}, workers::user_session::SessionWorker};
 
-use super::{message_builder::SocketSendAdaptor, user_session::SessionWorker};
+use super::message_builder::SocketSendAdaptor;
 
 type KeyPair = (ReusableSecret, PublicKey);
 

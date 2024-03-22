@@ -4,11 +4,8 @@ use env_logger;
 use futures_channel::mpsc::unbounded;
 use marain_server::{
     domain::commands::Command,
-    services::{
-        app::App,
-        app_gateway::AppGateway,
-        login::{create_key_pair, setup_listener, spawn_user_session},
-    },
+    services::login::{create_key_pair, setup_listener, spawn_user_session},
+    workers::{app::App, app_gateway::AppGateway},
 };
 use tokio_tungstenite::tungstenite::Result;
 use x25519_dalek::{PublicKey, ReusableSecret};
