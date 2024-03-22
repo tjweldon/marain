@@ -18,3 +18,4 @@ pub enum CommandPayload {
     GetRecipients,
     Time(Timestamp),
 }
+

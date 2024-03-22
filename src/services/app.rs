@@ -190,19 +190,21 @@ impl CommandHandler {
         // Decided to pass buffer instead?
         // Still returning Result<()> for fault tolerance around publishing
 
-        match command {
-            Command {
-                user,
-                payload: CommandPayload::RegisterUser(..),
-            } => {
+        let user = command.user.clone();
+
+        match command.payload.clone() {
+            CommandPayload::DropUser => {
+                self.handle_drop_user(&user, event_buf);
+                Ok(())
+            }
+
+            CommandPayload::RegisterUser(..) => {
                 event_buf.push_back(self.register_user(user.clone()));
                 event_buf.push_back(self.insert_occupant(&user, &Room::from("Hub")));
                 Ok(())
             }
-            Command {
-                user,
-                payload: CommandPayload::MoveUser { target_room },
-            } => {
+
+            CommandPayload::MoveUser { target_room } => {
                 match self.remove_occupant(&user) {
                     Some(broadcast) => event_buf.push_back(broadcast),
                     None => {
@@ -212,10 +214,7 @@ impl CommandHandler {
                 event_buf.push_back(self.insert_occupant(&user, &target_room));
                 Ok(())
             }
-            Command {
-                user,
-                payload: CommandPayload::RecordMessage { message },
-            } => {
+            CommandPayload::RecordMessage { message } => {
                 let msg_log = MessageLog::from_user(&user, message);
                 let recipients: Vec<User> =
                     Vec::from(self.state.record_chat_message(&user, msg_log.clone()));
@@ -224,9 +223,30 @@ impl CommandHandler {
                 event_buf.push_back(br);
                 Ok(())
             }
-
-            _ => Err(anyhow!("{command:?} not implemented in CommandHandler")),
+            _ => Err(anyhow!("{:?} not implemented in CommandHandler", command)),
         }
+    }
+
+    fn handle_drop_user(&mut self, user: &User, event_buf: &mut VecDeque<Broadcast>) {
+        let room = self
+            .state
+            .get_occupied_room(&user)
+            .unwrap_or(Room::default());
+        let mut subscribers = self.state.room_subscribers(&room);
+        if !subscribers.contains(&user) {
+            subscribers.push(user.clone());
+        }
+
+        let broadcast = self.remove_occupant(&user).unwrap_or(Broadcast {
+            event: Event::UserLeft {
+                user: user.clone(),
+                room: room.clone(),
+                msg_log: vec![],
+                occupant_names: self.state.occupant_names(&room),
+            },
+            subscribers,
+        });
+        event_buf.push_back(broadcast);
     }
 
     fn register_user(&mut self, user: User) -> Broadcast {
@@ -243,10 +263,13 @@ impl CommandHandler {
             return None;
         };
         self.state.remove_user_from_room(user);
+
         Some(Broadcast::new(
             Event::UserLeft {
                 user: user.clone(),
                 room: current_room.clone(),
+                occupant_names: self.state.occupant_names(&current_room),
+                msg_log: self.state.room_chat_logs(&current_room),
             },
             self.state.room_subscribers(&current_room),
         ))
@@ -292,8 +315,9 @@ impl App {
     }
 
     pub async fn work(&mut self) -> Result<()> {
-        // event buffer to limit re-allocation?
         let mut event_buf: VecDeque<Broadcast> = VecDeque::new();
+        let mut defer_unsubscribe: Option<User> = None;
+
         while let Some(command) = self.gateway_source.next().await {
             match command.clone() {
                 Command {
@@ -303,7 +327,10 @@ impl App {
                 Command {
                     user,
                     payload: CommandPayload::DropUser,
-                } => self.event_bus.unsubscribe(user),
+                } => {
+                    defer_unsubscribe = Some(user.clone());
+                    Ok(())
+                }
                 _ => Ok(()),
             }?;
             match self.command_handler.handle(command, &mut event_buf) {
@@ -315,6 +342,13 @@ impl App {
                 Err(e) => {
                     return Err(e);
                 }
+            }
+            if let Some(ref user) = defer_unsubscribe {
+                match self.event_bus.unsubscribe(user.clone()) {
+                    Err(e) => panic!("Failed to unsubscribe a user: {user:?} with Error: {e}"),
+                    _ => {}
+                };
+                defer_unsubscribe = None;
             }
         }
 

@@ -89,7 +89,7 @@ impl SessionWorker {
         bincode::deserialize::<ClientMsg>(&msg[..])
     }
 
-    fn parse_command(&mut self, msg: ClientMsg) -> Result<Command> {
+    fn parse_client_msg(&mut self, msg: ClientMsg) -> Result<Command> {
         match msg {
             ClientMsg { body, .. } => match body {
                 ClientMsgBody::SendToRoom { contents: message } => Ok(Command {
@@ -113,8 +113,8 @@ impl SessionWorker {
         }
     }
 
-    async fn handle_command(&mut self, msg: ClientMsg) -> Result<()> {
-        match self.parse_command(msg) {
+    async fn handle_client_msg(&mut self, msg: ClientMsg) -> Result<()> {
+        match self.parse_client_msg(msg) {
             Ok(cmd) => match cmd.payload {
                 CommandPayload::Time(t) => {
                     let ts = SocketSendAdaptor::prepare_send_time(&self.shared_secret, t)?;
@@ -142,32 +142,41 @@ impl SessionWorker {
                 self.user_sink.send(msg).await?;
                 Ok(())
             }
-            Event::UserLeft { user, room } => {
-                // let m = format!("{} left {}.", user.name, room.name)
-                //     .as_bytes()
-                //     .to_vec();
+            Event::UserLeft { room, occupant_names, msg_log, .. } => {
                 let msg =
-                    SocketSendAdaptor::user_left_room_response(&self.shared_secret, &user, &room)?;
+                    SocketSendAdaptor::user_left_room_response(&self.shared_secret, &room, msg_log, occupant_names)?;
                 self.user_sink.send(msg).await?;
                 Ok(())
             }
             Event::UserJoined {
                 msg_log,
                 occupant_names,
+                room,
                 ..
             } => {
-                // let m = format!("{} joined {}.", user.name, room.name)
-                //     .as_bytes()
-                //     .to_vec();
-
                 let msg = SocketSendAdaptor::room_data_response(
                     &self.shared_secret,
                     msg_log,
                     occupant_names,
+                    &room,
                 )?;
                 self.user_sink.send(msg).await?;
                 Ok(())
             }
+        }
+    }
+
+    pub async fn end_session(&mut self) {
+        self.app_socket.send_command(Command {user: self.user.clone(), payload: CommandPayload::DropUser});
+        loop {
+            match self.app_socket.next_event().await {
+                Some(Event::UserLeft { user, .. }) if user == self.user => {
+                    return;
+                },
+                _ => {
+                    continue;
+                }
+            };
         }
     }
 
@@ -180,20 +189,20 @@ impl SessionWorker {
 
         self.app_socket.send_command(register);
 
-        loop {
+        'main_loop: loop {
             tokio::select! {
                 Some(msg) = self.user_source.next() => {
                     let msg_bytes = match msg {
                         Ok(Message::Binary(data)) => data,
                         Err(e) => {
-                            log::error!("Invalid protocol: {e}");
-                            continue;
+                            log::error!("Invalid protocol, ending session. Error: {e}");
+                            break 'main_loop;
                         },
                         Ok(Message::Close {..}) => {
-                            return Ok(());
+                            break 'main_loop;
                         },
                         _ => {
-                            log::warn!("Unexpected message encoding");
+                            log::warn!("Unhandled message: {msg:?}");
                             continue;
                         }
                     };
@@ -201,21 +210,24 @@ impl SessionWorker {
                     let decrypted = match SessionWorker::decrypt(&self.shared_secret, msg_bytes) {
                         Ok(data) => data,
                         Err(e) => {
-                            log::error!("decryption error: {e}");
-                            continue;
+                            log::error!("Decryption error, ending session. Error: {e}");
+                            break 'main_loop;
                         }
                     };
 
                     let deserialized = match SessionWorker::deserialize(decrypted) {
                         Ok(data) => data,
                         Err(e) => {
-                            log::error!("deserialization error: {e}");
+                            log::error!("Deserialization error: {e}");
                             continue;
                         }
                     };
 
-                    match self.handle_command(deserialized).await {
-                        Err(e) => log::error!("Failed to push user message downstream: {e}"),
+                    match self.handle_client_msg(deserialized).await {
+                        Err(e) => {
+                            log::error!("Failed to push user message downstream, exiting user session. Error: {e}");
+                            break 'main_loop;
+                        },
                         _ => {}
                     };
                 }
@@ -223,10 +235,15 @@ impl SessionWorker {
                 Some(event) = self.app_socket.next_event() => {
                     match self.handle_event(event).await {
                         Ok(_) => {},
-                        Err(e) => log::error!("Error in SessionWorker event handler. Error: {e:?}")
+                        Err(e) => {
+                            log::warn!("Error in SessionWorker event handler. Error: {e:?}"); 
+                            break 'main_loop;
+                        }
                     }
                 }
             }
         }
+        self.end_session().await;
+        return Ok(());
     }
 }

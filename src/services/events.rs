@@ -14,6 +14,8 @@ pub enum Event {
     UserLeft {
         user: User,
         room: Room,
+        msg_log: Vec<MessageLog>,
+        occupant_names: Vec<String>,
     },
     MsgReceived {
         msg: MessageLog,

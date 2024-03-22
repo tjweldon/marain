@@ -58,15 +58,21 @@ impl SocketSendAdaptor {
         key: &[u8; 32],
         chat_logs: Vec<MessageLog>,
         occupants: Vec<String>,
+        room: &Room,
     ) -> Result<Message> {
-        let server_msg = ServerMsgFactory::build_room_data(chat_logs, occupants);
+        let server_msg = ServerMsgFactory::build_room_data(chat_logs, occupants, room);
         let serialized = SocketSendAdaptor::serialized_server_msg(server_msg)?;
         let encrypted = SocketSendAdaptor::encrypt_message(key, serialized)?;
         Ok(encrypted)
     }
 
-    pub fn user_left_room_response(key: &[u8; 32], user: &User, room: &Room) -> Result<Message> {
-        let server_msg = ServerMsgFactory::build_user_left(user, room);
+    pub fn user_left_room_response(
+        key: &[u8; 32],
+        room: &Room,
+        chat_logs: Vec<MessageLog>,
+        occupants: Vec<String>,
+    ) -> Result<Message> {
+        let server_msg = ServerMsgFactory::build_user_left(room, chat_logs, occupants);
         let serialized = SocketSendAdaptor::serialized_server_msg(server_msg)?;
         let encrypted = SocketSendAdaptor::encrypt_message(key, serialized)?;
         Ok(encrypted)
@@ -84,21 +90,38 @@ impl ServerMsgFactory {
         }
     }
 
-    fn build_user_left(user: &User, room: &Room) -> ServerMsg {
-        let body = format!("{} left {}", user.name, room.name);
+    fn build_user_left(
+        room: &Room,
+        chat_logs: Vec<MessageLog>,
+        occupants: Vec<String>,
+    ) -> ServerMsg {
         ServerMsg {
             status: Status::Yes,
             timestamp: Timestamp::from(Utc::now()),
-            body: ServerMsgBody::Notification { body },
+            body: ServerMsgBody::RoomData {
+                room_name: room.name.clone(),
+                query_ts: Timestamp::from(Utc::now()),
+                logs: chat_logs.iter().map(|ml| ChatMsg {
+                    sender: ml.username.clone(),
+                    timestamp: Timestamp::from(ml.timestamp),
+                    content: ml.contents.clone(),
+                }).collect(),
+                occupants,
+            },
         }
     }
 
-    fn build_room_data(chat_logs: Vec<MessageLog>, occupants: Vec<String>) -> ServerMsg {
+    fn build_room_data(
+        chat_logs: Vec<MessageLog>,
+        occupants: Vec<String>,
+        room: &Room,
+    ) -> ServerMsg {
         ServerMsg {
             status: Status::Yes,
             timestamp: Timestamp::from(Utc::now()),
             body: ServerMsgBody::RoomData {
                 query_ts: Timestamp::from(Utc::now()),
+                room_name: room.name.clone(),
                 logs: chat_logs
                     .iter()
                     .map(|ml| ChatMsg {
